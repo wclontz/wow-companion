@@ -359,8 +359,8 @@ class Companion:
         self.overheal = 0
         self.heal_taken = 0
         self.shield_absorbed = 0
-        self.spells = defaultdict(lambda: {"casts": 0, "dmg": 0, "heal": 0, "over": 0, "mana": 0,
-                                           "hits": 0, "crits": 0, "max": 0})
+        self.spells = self._new_spells()
+        self._spell_sets = {}                # the other characters' spell numbers this session: guid -> (spells, spell_eff)
         self.taken_by = defaultdict(lambda: {"dmg": 0, "hits": 0, "max": 0})
         self.failed = defaultdict(int)
         self.biggest_hit = None              # {amt, spell, target, crit, t}
@@ -388,10 +388,7 @@ class Companion:
         self.mob_moves = defaultdict(lambda: defaultdict(lambda: {"n": 0, "dmg": 0, "max": 0, "crits": 0,
                                                                   "kind": "", "absorbed": 0}))
         self.mob_heals = defaultdict(lambda: defaultdict(lambda: {"n": 0, "amt": 0, "casts": 0}))
-        self.spell_eff = defaultdict(lambda: {"casts": 0, "cast_time": 0.0, "timed": 0, "mana": 0,
-                                              "heal_eff": 0, "heal_over": 0, "heal_hits": 0,
-                                              "by_mob": defaultdict(lambda: {"casts": 0, "dmg": 0, "hits": 0,
-                                                                             "crits": 0})})
+        self.spell_eff = self._new_spell_eff()
         self.fights = deque(maxlen=300)
         self.combat_time = 0.0
         self.lowest_hp_pct = None            # closest call (survived)
@@ -636,6 +633,11 @@ class Companion:
             if g != self.me and g.startswith("Player-") and f & MINE and f & T_PLAYER and short_name(n):
                 if self.me is not None:                      # the buffs seen on / off were the other character's
                     self.my_auras, self.my_removed = {}, {}
+                    # ...and so were the spells: each character keeps its own (a warlock has no Lesser Heal to
+                    # count casts of). Coming back to a character brings its numbers back.
+                    self._spell_sets[self.me] = (self.spells, self.spell_eff)
+                    self.spells, self.spell_eff = self._spell_sets.pop(g, None) or (self._new_spells(), self._new_spell_eff())
+                    self._se_cache = None
                 self.me, self.me_name = g, short_name(n)
                 break
 
@@ -819,6 +821,8 @@ class Companion:
                 sp["heal"] += amt
                 sp["over"] += over
                 sp["hits"] += 1
+                if dst_me:
+                    sp["self"] += amt                    # it heals YOU (Health Funnel heals the pet: not a heal to count on)
                 if self.fight:
                     self.fight["healed"] += amt - over
             if dst_me:
@@ -1417,6 +1421,17 @@ class Companion:
                 break                                        # an area on both sides of a zone line: no help
         return self.cur_map if fallback else None
 
+    @staticmethod
+    def _new_spells():
+        return defaultdict(lambda: {"casts": 0, "dmg": 0, "heal": 0, "over": 0, "mana": 0,
+                                    "hits": 0, "crits": 0, "max": 0, "self": 0})
+
+    @staticmethod
+    def _new_spell_eff():
+        return defaultdict(lambda: {"casts": 0, "cast_time": 0.0, "timed": 0, "mana": 0,
+                                    "heal_eff": 0, "heal_over": 0, "heal_hits": 0,
+                                    "by_mob": defaultdict(lambda: {"casts": 0, "dmg": 0, "hits": 0, "crits": 0})})
+
     def to_map_pct(self, zone, wx, wy):
         """World (x, y) -> zone map percent, using the bounds from MAP_CHANGE."""
         b = self.map_bounds.get(zone)
@@ -1738,6 +1753,7 @@ class Companion:
                 eff = sp["heal"] - sp["over"]
                 spells.append({
                     "name": name, "casts": sp["casts"], "dmg": sp["dmg"], "heal": sp["heal"], "over": sp["over"],
+                    "self_heal": sp.get("self", 0),
                     "eff_heal": eff, "mana": sp["mana"], "hits": sp["hits"], "crits": sp["crits"], "max": sp["max"],
                     "per_mana": round((sp["dmg"] + eff) / sp["mana"], 2) if sp["mana"] else None,
                 })

@@ -269,7 +269,7 @@ canvas{width:100%;flex:1;min-height:0;height:0;display:block}
       <div class="bar hp"><i id="hpBar2" style="width:0"></i><span id="hpTxt2">health</span></div>
       <div class="under"><span class="n" id="hitsFromLast" style="color:var(--hp)">—</span><span class="t" id="hitsFromLastTxt">hits from the last mob</span></div>
       <div class="bar mana"><i id="manaBar" style="width:0"></i><span id="manaTxt">mana</span></div>
-      <div class="under"><span class="n" id="castsLeft" style="color:#8fb4ff">—</span><span class="t" id="castsLeftTxt">Smites left</span></div>
+      <div class="under"><span class="n" id="castsLeft" style="color:#8fb4ff">—</span><span class="t" id="castsLeftTxt">casts left</span></div>
       <div id="readyWhy"></div>
       <div class="abar" id="abar"></div>
     </div>
@@ -541,8 +541,9 @@ function renderUnder(s){
     $("hitsFromLast").textContent = Math.floor(p.hp / lastRow.their_avg);
     $("hitsFromLastTxt").textContent = `hits from ${lastRow.name} (avg ${lastRow.their_avg})`;
   } else { $("hitsFromLast").textContent = "—"; $("hitsFromLastTxt").textContent = "hits from the last mob"; }
-  // mana: how many of your main damage spell (Smite) and main heal you can still cast
-  const dmg = spellCost(s, r => r.dmg > 0), heal = spellCost(s, r => r.heal > 0 && r.dmg === 0);
+  // mana: how many of your main damage spell and (if this character has one) your main heal on yourself you can
+  // still cast. Both come from what THIS character has cast: a warlock gets Shadow Bolts and no heal.
+  const dmg = spellCost(s, r => r.dmg > 0), heal = spellCost(s, r => r.self_heal > 0 && r.dmg === 0);
   if (dmg && p.power != null) {
     const n = Math.floor(p.power / dmg.cost);
     $("castsLeft").textContent = n;
