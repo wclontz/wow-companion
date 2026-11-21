@@ -1673,6 +1673,14 @@ class Companion:
                 avg = tot / n
                 if best is None or n > best[2]:
                     best = (sp, avg, n)
+        # a caster: count in casts of the direct-damage spell cast most at this mob, at its damage per cast (a
+        # warlock's own staff swings land most often, but "32 Melees to kill" is no use). No such spell: as before.
+        cast = None
+        for sp in ms["my_dmg"]:                          # spells that hit it directly (a DoT's ticks are not in here)
+            bm = self.spell_eff[sp]["by_mob"].get(name) if sp != "Melee" and sp in self.spell_eff else None
+            if bm and bm["casts"] >= 2 and bm["dmg"] > 0 and (cast is None or bm["casts"] > cast[2]):
+                cast = (sp, bm["dmg"] / bm["casts"], bm["casts"])
+        best = cast or best
         if best:
             out["best_spell"], out["best_avg"] = best[0], round(best[1])
             if ms["maxhp"]:
