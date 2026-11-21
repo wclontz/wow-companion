@@ -162,6 +162,16 @@ def xp_needed(lvl):
     return XP_SEEN.get(lvl) or (XP_TABLE[lvl] if 0 < lvl < len(XP_TABLE) else 0)
 
 
+def _strip_name():
+    """The character's name as the add-on's strip gives it right now, or None (no strip, or not sent yet)."""
+    try:
+        import beacon
+        d = beacon.latest()
+        return ((d or {}).get("texts") or {}).get("name") or None
+    except Exception:
+        return None
+
+
 def strip_summary():
     """For the pages: what the add-on's strip is giving right now (None: no strip, or an old add-on)."""
     try:
@@ -367,6 +377,7 @@ class Companion:
         self.spells = self._new_spells()
         self._chars = {}                     # the other characters' session numbers: guid -> {attribute: value}
         self._char_spans = []                # [log time, guid]: who was being played from when (for the chat log)
+        self._char_names = {}                # guid -> name of every character of yours the log has shown
         self.taken_by = defaultdict(lambda: {"dmg": 0, "hits": 0, "max": 0})
         self.failed = defaultdict(int)
         self.biggest_hit = None              # {amt, spell, target, crit, t}
@@ -650,6 +661,9 @@ class Companion:
         # who you are: the player the log marks as yours. Another one later = you switched characters.
         for g, n, f in ((sg, sn, sf), (dg, dn, df)):
             if g != self.me and g.startswith("Player-") and f & MINE and f & T_PLAYER and short_name(n):
+                self._char_names[g] = short_name(n)
+                if self.me is not None and time.time() - t < 300 and _strip_name() == self._char_names.get(self.me):
+                    break                                    # a late line of the character you just left (see follow_strip)
                 if self.me is not None:                      # the buffs seen on / off were the other character's
                     self.my_auras, self.my_removed = {}, {}
                     for m_ in self.grp.members.values():     # the group's "you" is this character now
@@ -1521,6 +1535,25 @@ class Companion:
             setattr(self, k, v)
         self._se_cache = None
 
+    def follow_strip(self, name):
+        """The add-on names the character on screen at once; the log is 30 s to several minutes behind. When
+        the name is another character of yours the log has shown before, be that character now (a quick look
+        at one character and back left the pages on the wrong one's empty session, 2026-11-21 15:02)."""
+        with self.lock:
+            if not name or self.me is None:
+                return False
+            g = next((g for g, n in self._char_names.items() if n == name), None)
+            if g is None or g == self.me:
+                return False                         # (never seen in the log: its first line will say who it is)
+            self.my_auras, self.my_removed = {}, {}
+            for m_ in self.grp.members.values():
+                m_["me"] = m_["guid"] == g
+            self._switch_character(g)
+            self._char_spans.append([self.last_t or time.time(), g])
+            self.me, self.me_name = g, name
+            self.grp.me = self.inst.me = g
+            return True
+
     def _who_at(self, t):
         """The character being played at log time t (a guid), or None before any is known."""
         who = None
@@ -2298,9 +2331,11 @@ class Tailer(threading.Thread):
             print("strip feed error:", repr(e), file=sys.stderr)
             return None
         name = ((d.get("texts") or {}).get("name") or "").strip()
+        if name:                                         # the add-on names your character at once (the log only
+            self.comp.follow_strip(name)                 # at its first fight): a switch of characters shows now
         with self.comp.lock:
-            if name and name != self.comp.me_name:       # the add-on names your character at once (the log only
-                self.comp.me_name = name                 # at its first fight): a switch of characters shows now
+            if name and name != self.comp.me_name:
+                self.comp.me_name = name                 # (a character the log has not shown yet: its name at least)
             self.comp.strip_party = pl
             for m in pl or ():
                 if m["level"] and m["name"]:
