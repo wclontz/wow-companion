@@ -38,7 +38,8 @@ Using Claude? Open this folder in Claude and say "set this up": `SETUP_FOR_CLAUD
 ## The pages
 
 `http://127.0.0.1:8765/hud` is the one-screen HUD. From there: all the numbers (`/`), `/group`, `/dungeon`,
-`/instance`, `/map` (wheel, pinch or + − to zoom).
+`/instance`, `/map` (wheel, pinch or + − to zoom), and `/characters`: each of your characters' level, money,
+gear and kills over days and weeks (a line is saved to `character_log.jsonl` every few minutes while you play).
 
 ## One monitor? Use a tablet or phone
 
@@ -93,6 +94,7 @@ to do, anything worth knowing.
   the logs and the map still work. `screen_layout.json` holds those positions.
 - Mob, item and icon info is looked up on wow-forever.gg / Wowhead the first time each is seen, and kept in this
   folder, so those fill in as you play.
+- Each character has its own session numbers (kills, deaths, pace, spells); switching characters switches them.
 - Your maps, logs and numbers stay in this folder. `maps` grows as you explore (several GB over months).
 - Map packages: the map page can export a map and import a friend's.
 - Update: unzip the new release over the old folder (or `git pull`) and run Setup.bat again, which copies the

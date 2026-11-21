@@ -2473,6 +2473,40 @@ def load_markers():
         return []
 
 
+CHARLOG = None
+_CHAR_WAIT = {}                     # character -> since when its reading has been incomplete
+
+
+def char_reading():
+    """What goes into the character's progress log right now (charlog.py), or None. Level, XP, money and gear
+    are the add-on's numbers for the character on screen; kills, deaths and time played are added only when the
+    log agrees that this is the character being played (the log runs up to 2 minutes behind a switch)."""
+    import beacon
+    d = beacon.latest()
+    st = d.get("stats") if d else None
+    name = ((d or {}).get("texts") or {}).get("name")
+    if not st or not name or not st.get("level"):
+        return None
+    g = (beacon.gear(d) or {}).get("me") or {}
+    rec = {"name": name, "level": st["level"], "xp": st.get("xp"), "xpmax": st.get("xpmax"), "money": st.get("money"),
+           "gear": g.get("score") if g.get("whole") else None, "ilvl": g.get("avg") if g.get("whole") else None,
+           "zone": ((d or {}).get("texts") or {}).get("zone") or None}
+    with COMP.lock:
+        if COMP.me_name == name and COMP.segments:
+            rec.update(sess=round(COMP.segments[0][0]), kills=len(COMP.kills), deaths=len(COMP.deaths),
+                       played=round(sum(e - s for s, e in COMP.segments)))
+    # the first minutes after a start (or a switch of characters) the gear, the zone and the log's counts are
+    # still arriving: wait for a whole reading rather than keep half of one. After 3 minutes, what there is.
+    whole = rec["gear"] is not None and rec["zone"] and "sess" in rec
+    if not whole:
+        since = _CHAR_WAIT.setdefault(name, time.time())
+        if time.time() - since < 180:
+            return None
+    else:
+        _CHAR_WAIT.pop(name, None)
+    return rec
+
+
 def quest_spots(frame=None):
     """Where the looked-up quests still in your log send you, for the maps: each place as the look-up gave it
     (zone, x, y in that zone's map coords) plus, when both zones' edges are known, the same place in the coords of
@@ -2533,7 +2567,8 @@ class Handler(BaseHTTPRequestHandler):
                 "/group": "group.html", "/group.html": "group.html",
                 "/instance": "instance.html", "/instance.html": "instance.html",
                 "/dungeon": "dungeon.html", "/dungeon.html": "dungeon.html",
-                "/map": "map.html", "/map.html": "map.html"}.get(self.path.split("?")[0])
+                "/map": "map.html", "/map.html": "map.html",
+                "/characters": "characters.html", "/characters.html": "characters.html"}.get(self.path.split("?")[0])
         if page:
             with open(os.path.join(HERE, page), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -2542,6 +2577,9 @@ class Handler(BaseHTTPRequestHandler):
             q = parse_qs(urlparse(self.path).query)
             data = COMP.dungeon_snapshot((q.get("guide") or [None])[0])
             self._send(200, json.dumps(data, default=list).encode(), "application/json")
+        elif self.path.startswith("/api/characters"):              # each character's progress over time (charlog.py)
+            data = CHARLOG.snapshot() if CHARLOG else {"chars": [], "error": "not started"}
+            self._send(200, json.dumps(data).encode(), "application/json")
         elif self.path.startswith("/api/qr.svg"):                  # the tablet address as a QR code (qr.py)
             urls = lan_urls()
             if not urls:
@@ -2849,7 +2887,7 @@ def main():
             print('  {"wow_dir": "D:/Games/World of Warcraft"}')
             sys.exit(1)
         os.makedirs(LOG_DIR, exist_ok=True)      # a game that has never logged: the folder comes with its first log
-    global SCREEN, QUESTS, ASKER, NAMER, LOC, MOBS, BUFFS, PARTY_NAMES, MAPPER
+    global SCREEN, QUESTS, ASKER, NAMER, LOC, MOBS, BUFFS, PARTY_NAMES, MAPPER, CHARLOG
     if "--no-screen" not in sys.argv:
         try:
             from screenread import ScreenReader
@@ -2910,6 +2948,12 @@ def main():
     from logarchive import LogArchiver
     LogArchiver(LOG_DIR).start()                       # permanent compressed copies of every log
     Tailer(COMP).start()
+    try:
+        from charlog import CharLog
+        CHARLOG = CharLog(char_reading)                    # a line per character every few minutes, kept for good
+        CHARLOG.start()
+    except Exception as e:
+        print("character log not started:", repr(e), file=sys.stderr)
     # this PC + the home network (the owner's choice); "lan": false in settings.json keeps it to this PC
     srv = ThreadingHTTPServer(("0.0.0.0" if wowpath.lan_on() else "127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/hud"
