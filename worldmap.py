@@ -18,7 +18,7 @@ import time
 
 import numpy as np
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 import quadmap
 from quadmap import QuadMap, G, zone_bounds
@@ -59,6 +59,40 @@ def to_world(zone, px, py):
         return None
     N, S, W, E = b
     return (-W + px / 100 * (W - E), -N + py / 100 * (N - S))
+
+
+def _grow_in(a, holes, rounds=48):
+    """Fills the see-through pixels marked in `holes` (an RGBA array's small gaps) from the drawn pixels around
+    them, a ring at a time: each takes the average of its drawn neighbours. A gap wider than 2 x rounds px keeps
+    a see-through middle rather than a guess."""
+    known = a[..., 3] > 0
+    rgb = a[..., :3].astype(np.float32)
+    todo = holes & ~known
+    for _ in range(rounds):
+        if not todo.any():
+            break
+        tot = np.zeros_like(rgb)
+        cnt = np.zeros(known.shape, dtype=np.float32)
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            k = np.roll(known, (dy, dx), axis=(0, 1))
+            v = np.roll(rgb, (dy, dx), axis=(0, 1))
+            if dy == 1: k[0, :] = False
+            if dy == -1: k[-1, :] = False
+            if dx == 1: k[:, 0] = False
+            if dx == -1: k[:, -1] = False
+            tot += v * k[..., None]
+            cnt += k
+        ring = todo & (cnt > 0)
+        if not ring.any():
+            break
+        rgb[ring] = tot[ring] / cnt[ring][:, None]
+        known = known | ring
+        todo &= ~ring
+    out = a.copy()
+    filled = holes & known & (a[..., 3] == 0)
+    out[..., :3][filled] = np.clip(rgb[filled], 0, 255).astype(np.uint8)
+    out[..., 3][filled] = 255
+    return out
 
 
 class WorldMap(QuadMap):
@@ -121,9 +155,12 @@ class WorldMap(QuadMap):
                     shots.append((ref * c["x"], ref * c["y"], c, R))
                 # squares (absolute canvas px) -> nearest shots that fully cover them
                 sq = {}
+                radius, near = {}, {}                 # each shot's drawn radius; shots by 250 px cell (hole filling)
                 for i, (px, py, c, R) in enumerate(shots):
                     f = ref / R["k"]
                     rr = (self.img(place, c).width / 2 - 6) * f
+                    radius[i] = rr
+                    near.setdefault((int(px // 250), int(py // 250)), []).append(i)
                     reach = rr - G * 0.72
                     if reach <= 0:
                         continue
@@ -152,24 +189,62 @@ class WorldMap(QuadMap):
                         continue                      # nothing changed under this tile
                     canvas = Image.new("RGBA", (T, T), (0, 0, 0, 0))
                     cache = {}
+
+                    def piece(i, qx, qy):             # shot i's part of square (qx, qy), at the map's zoom
+                        px, py, c, R = shots[i]
+                        im = cache.get(i)
+                        if im is None:
+                            im = self.img(place, c)
+                            if (R.get("k") or 0) >= INDOOR_K:   # indoor view: black around the buildings
+                                a = np.asarray(im).copy()       # is not ground - see-through
+                                a[..., 3] = np.where(a[..., :3].max(axis=2) < 12, 0, a[..., 3])
+                                im = Image.fromarray(a)
+                            f = ref / R["k"]
+                            if abs(f - 1) > 0.01:
+                                w = max(8, int(round(im.width * f)))
+                                im = im.resize((w, w), Image.BILINEAR)
+                                # enlarging blends the picture into the black behind its cut-outs: a dark line
+                                # round every hole and rim. Those blended pixels (and 2 more) are cut away too.
+                                al = im.getchannel("A").point(lambda v: 255 if v >= 250 else 0).filter(ImageFilter.MinFilter(5))
+                                im.putalpha(al)
+                            cache[i] = im
+                        bx0, by0 = qx * G, qy * G
+                        ix, iy = int(round(bx0 - (px - im.width / 2))), int(round(by0 - (py - im.height / 2)))
+                        return im.crop((ix, iy, ix + G, iy + G))
+
+                    holes = np.zeros((T, T), dtype=bool)    # see-through pixels left inside drawn squares
                     for (qx, qy), ids in squares:
+                        at = (qx * G - tx * T, qy * G - ty * T)
                         for i in reversed(ids):       # nearest last = on top; the others fill its holes
-                            px, py, c, R = shots[i]
-                            im = cache.get(i)
-                            if im is None:
-                                im = self.img(place, c)
-                                if (R.get("k") or 0) >= INDOOR_K:   # indoor view: black around the buildings
-                                    a = np.asarray(im).copy()       # is not ground - see-through
-                                    a[..., 3] = np.where(a[..., :3].max(axis=2) < 12, 0, a[..., 3])
-                                    im = Image.fromarray(a)
-                                f = ref / R["k"]
-                                if abs(f - 1) > 0.01:
-                                    w = max(8, int(round(im.width * f)))
-                                    im = im.resize((w, w), Image.BILINEAR)
-                                cache[i] = im
-                            bx0, by0 = qx * G, qy * G
-                            ix, iy = int(round(bx0 - (px - im.width / 2))), int(round(by0 - (py - im.height / 2)))
-                            canvas.alpha_composite(im.crop((ix, iy, ix + G, iy + G)), (bx0 - tx * T, by0 - ty * T))
+                            canvas.alpha_composite(piece(i, qx, qy), at)
+                        if L != 0:
+                            continue                  # (a city level's see-through black is meant: not a hole)
+                        # The middle of every shot is see-through (your arrow is cut out). Where the shots chosen
+                        # for this square all have their hole on it - a road walked once - it stayed black. Any
+                        # other shot that reaches the square goes UNDER what is drawn, nearest first.
+                        cur = canvas.crop((at[0], at[1], at[0] + G, at[1] + G))
+                        if np.asarray(cur)[..., 3].min() > 0:
+                            continue
+                        cx, cy = (qx + 0.5) * G, (qy + 0.5) * G
+                        more = []
+                        for ux in range(int(cx // 250) - 2, int(cx // 250) + 3):
+                            for uy in range(int(cy // 250) - 2, int(cy // 250) + 3):
+                                for i in near.get((ux, uy), ()):
+                                    dd = math.hypot(shots[i][0] - cx, shots[i][1] - cy)
+                                    if i not in ids and dd < radius[i] + G * 0.72:
+                                        more.append((dd, i))
+                        for dd, i in sorted(more)[:10]:
+                            under = piece(i, qx, qy)
+                            under.alpha_composite(cur)
+                            cur = under
+                            if np.asarray(cur)[..., 3].min() > 0:
+                                break
+                        canvas.paste(cur, at)
+                        left = np.asarray(cur)[..., 3] == 0
+                        if left.any():
+                            holes[at[1]:at[1] + G, at[0]:at[0] + G] = left
+                    if holes.any():                   # what no shot covers at all: grown in from its edges
+                        canvas = Image.fromarray(_grow_in(np.asarray(canvas).copy(), holes))
                     canvas.save(os.path.join(d, name + ".tmp"), "PNG")
                     os.replace(os.path.join(d, name + ".tmp"), os.path.join(d, name))
                     drawn += 1
