@@ -82,6 +82,9 @@ for n in range(200):
           "power": rnd.randint(0, 9000), "powermax": rnd.randint(0, 9000), "ptype": rnd.choice([0, 1, 3]),
           "combat": rnd.random() < .5, "resting": rnd.random() < .5, "group": rnd.choice([0, 2, 5]),
           "target_level": rnd.choice([None, -1, rnd.randint(1, 62)]), "target_dead": False,
+          "target_hp": rnd.choice([None, 0.0, 100.0, rnd.randint(0, 1000) / 10]),
+          "target_reaction": rnd.choice([None, "hostile", "neutral", "friendly"]),
+          "target_player": rnd.random() < .3, "target_attackable": rnd.random() < .5, "target_tapped": rnd.random() < .2,
           "money": rnd.randint(0, 900000000), "bag_free": rnd.randint(0, 63), "bag_all": rnd.randint(16, 120),
           "wear": rnd.randint(0, 1000), "quests": rnd.randint(0, 25), "party": rnd.randint(0, 4)}
     for kw in ({}, {"gamma": 1.25}, {"lo": 12, "hi": 235}, {"noise": 5}):
@@ -89,6 +92,8 @@ for n in range(200):
                                                6: beacon.encode_page(12, n, b"21\t0\tA quest", 0, 6)}), **kw))
         s = r and r.get("stats")
         want = dict(st, wear=st["wear"] / 10)
+        if st["target_level"] is None:                    # no target: nothing about one is read
+            want.update(target_hp=None, target_reaction=None, target_player=False, target_attackable=False, target_tapped=False)
         if not (s and all(s[k] == want[k] for k in want) and s["target"] == (st["target_level"] is not None)
                 and [(g["chan"], g["bytes"]) for g in r["pages"]] == [(1, b"Shadowfang Keep"), (12, b"21\t0\tA quest")]
                 and r["instance"] and r["inst"] == 33):

@@ -177,7 +177,9 @@ def strip_summary():
                 "combat": st["combat"], "resting": st["resting"], "group": st["group"],
                 "health_known": st["hpmax"] is not None, "power_known": st["powermax"] is not None,
                 "label": tx.get("label"), "zone": tx.get("zone"), "target": tx.get("target"),
-                "target_level": st["target_level"], "party": beacon.party(d), "gear": beacon.gear(d),
+                "target_level": st["target_level"], "target_hp": st.get("target_hp"),
+                "target_reaction": "player" if st.get("target_player") else st.get("target_reaction"),
+                "target_tapped": st.get("target_tapped"), "party": beacon.party(d), "gear": beacon.gear(d),
                 "minimap": beacon.minimap(d),
                 "money_trend": money_trend(tx.get("name"), st["money"]),
                 "quests": st["quests"], "quests_read": None if ql is None else len(ql)}
@@ -1326,27 +1328,38 @@ class Companion:
 
     @staticmethod
     def _strip_target():
-        """(name, level) of the target as the add-on's strip gives it right now, or (None, None)."""
+        """The target as the add-on's strip gives it right now: (name, level, health 0-1 or None, reaction or
+        None), or four Nones. Health and reaction come with strip version 6."""
         try:
             import beacon
             d = beacon.latest()
             name = ((d or {}).get("texts") or {}).get("target")
-            lvl = ((d or {}).get("stats") or {}).get("target_level")
-            return (name, lvl if lvl and lvl > 0 else None) if name else (None, None)
+            st = (d or {}).get("stats") or {}
+            if not name or not st.get("target"):
+                return None, None, None, None
+            lvl = st.get("target_level")
+            hp = st.get("target_hp")
+            return (name, lvl if lvl and lvl > 0 else None, hp / 100 if hp is not None else None,
+                    "player" if st.get("target_player") else st.get("target_reaction"))
         except Exception:
-            return None, None
+            return None, None, None, None
 
     def _target_now(self):
         """What's targeted right now, from the screen only: name OCR'd off the target frame,
         health from its bar. The log just supplies averages (your hit size, its hit, max HP)."""
         scr_t = self.screen.get("target") if self.screen_live() else None
+        reaction = self.screen.get("reaction") if scr_t is not None else None
         ocr_name, strip_lvl = self.ocr_target, None
-        if scr_t is None:
-            # no target frame where the screen reader looks (another character's layout): the add-on still says
-            # who is targeted and its level. Its health is not known then, so the card counts from full health.
-            ocr_name, strip_lvl = self._strip_target()
-            if not ocr_name:
-                return None
+        s_name, s_lvl, s_hp, s_react = self._strip_target()
+        if s_name:
+            # the add-on's own word on the target beats the picture: its health to a thousandth and whether it is
+            # friendly (strip version 6), on every layout. An older add-on gives the name and level only; then
+            # the health is the screen's bar, or not known (the card counts from full health).
+            ocr_name, strip_lvl = s_name, s_lvl
+            scr_t = s_hp if s_hp is not None else scr_t
+            reaction = s_react or reaction
+        elif scr_t is None:
+            return None
         name = None
         if ocr_name:
             known = {n for n, ms in self.mobstats.items() if ms["my_dmg"] or ms["their_hits"] or ms["maxhp"]}
@@ -1362,9 +1375,9 @@ class Companion:
         return {"name": name or "Reading name…",
                 "level": strip_lvl or ((lv[0] if len(lv) == 1 else f"{lv[0]}-{lv[-1]}") if lv else None),
                 "hp": hp, "maxhp": maxhp, "hits_left": left, "live": True, "assumed": scr_t is None, "frac": scr_t,
-                "reaction": self.screen.get("reaction") if scr_t is not None else None,
+                "reaction": reaction,
                 "heals": self.mob_heal_info(name) if name else None,
-                "info": MOBS.lookup(name) if MOBS and name and self.screen.get("reaction") not in ("player",) else None,
+                "info": MOBS.lookup(name) if MOBS and name and reaction not in ("player",) else None,
                 "moves": self.mob_moves_info(name) if name else [],
                 "known": bool(hm["best_avg"] or hm["their_avg"]), **hm, **self._race(name, left, hm)}
 

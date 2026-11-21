@@ -38,7 +38,9 @@
 --   36     free bag slots (63 = 63 or more)           37-38  bag slots in all
 --   39-40  the most worn piece of gear, in thousandths (1000 = like new)
 --   41     quests in the log                          42     party members besides you (0-4)
---   43-45  spare (0)
+--   43-44  target health in thousandths + 1 (0 = no target, or the game keeps it secret)      (version 6)
+--   45     the target: 1 hostile / 2 neutral / 3 friendly to you (0 not known), + 4 a player,
+--          + 8 you can attack it, + 16 someone else's (tapped: no loot or XP for you)
 --   46-47  checksum of squares 1-45
 --
 -- Rows 3-6: texts, a page of 20 bytes at a time, each page held for 4 updates. A text that changed goes next.
@@ -62,7 +64,7 @@
 --   45     length, high 6 bits
 --   46-47  checksum of squares 1-45
 
-local CELL, CELLS, ROWS, VERSION = 4, 47, 6, 5
+local CELL, CELLS, ROWS, VERSION = 4, 47, 6, 6
 local PAGE, HOLD, TEXT_MAX, QUEST_MAX = 20, 4, 1200, 40
 local floor = math.floor
 
@@ -172,7 +174,7 @@ local function numbers()                                    -- row 2
     if yes(UnitAffectingCombat, "player") then flags = flags + 1 end
     if yes(IsResting) then flags = flags + 2 end
     if rested then flags = flags + 4 end
-    local tlevel = 0
+    local tlevel, thp, tinfo = 0, 0, 0
     if yes(UnitExists, "target") then
         flags = flags + 8
         local tl = num(UnitLevel, "target")
@@ -180,6 +182,15 @@ local function numbers()                                    -- row 2
             if tl < 0 or tl > 62 then tlevel = 63 else tlevel = tl end
         end
         if yes(UnitIsDead, "target") then flags = flags + 16 end
+        local th, thmax = num(UnitHealth, "target"), num(UnitHealthMax, "target")
+        if th and thmax and thmax > 0 then thp = clamp(th * 1000 / thmax + 0.5, 1000) + 1 end
+        local r = num(UnitReaction, "target", "player")     -- 1-3 hostile, 4 neutral, 5-8 friendly
+        if r then
+            if r <= 3 then tinfo = 1 elseif r == 4 then tinfo = 2 else tinfo = 3 end
+        end
+        if yes(UnitIsPlayer, "target") then tinfo = tinfo + 4 end
+        if yes(UnitCanAttack, "player", "target") then tinfo = tinfo + 8 end
+        if yes(UnitIsTapDenied, "target") then tinfo = tinfo + 16 end
     end
     local group = GetNumGroupMembers and num(GetNumGroupMembers) or 0
     if group > 0 then flags = flags + 32 end
@@ -208,7 +219,8 @@ local function numbers()                                    -- row 2
     put(B + 39, 2, clamp(slow.wear, 1000))
     set(B + 41, clamp(slow.quests, 63))
     set(B + 42, clamp(slow.party, 4))
-    for k = 43, 45 do set(B + k, 0) end
+    put(B + 43, 2, thp)
+    set(B + 45, tinfo)
     seal(2)
 end
 

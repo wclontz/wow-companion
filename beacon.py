@@ -15,7 +15,7 @@ import time
 
 import numpy as np
 
-CELL, CELLS, ROWS, VERSION = 4, 47, 6, 5
+CELL, CELLS, ROWS, VERSION = 4, 47, 6, 6
 PAGE = 20
 TEXT_ROWS = (3, 4, 5, 6)
 
@@ -94,7 +94,8 @@ def _seal(row, cells):
 
 def encode_stats(st):
     """Row 2's squares for {"level", "xp", "xpmax", "rested", "hp", "hpmax", "power", "powermax", "ptype",
-    "combat", "resting", "group", "target_level", "target_dead", "money", "bag_free", "bag_all", "wear",
+    "combat", "resting", "group", "target_level", "target_dead", "target_hp" (percent), "target_reaction",
+    "target_player", "target_attackable", "target_tapped", "money", "bag_free", "bag_all", "wear",
     "quests", "party"}: for tests. No "hpmax" / "powermax" / "xpmax" / "money" / "bag_all" / "wear" = that
     value is secret or missing (not known)."""
     v = [0] * CELLS
@@ -117,6 +118,12 @@ def encode_stats(st):
     v[35] = min(63, st.get("bag_free") or 0)
     put(37, 2, st.get("bag_all") or 0), put(39, 2, st.get("wear") or 0)
     v[40], v[41] = st.get("quests", 0), st.get("party", 0)
+    if tl is not None:
+        if st.get("target_hp") is not None:
+            put(43, 2, round(st["target_hp"] * 10) + 1)
+        v[44] = {"hostile": 1, "neutral": 2, "friendly": 3}.get(st.get("target_reaction"), 0) \
+            | (4 if st.get("target_player") else 0) | (8 if st.get("target_attackable") else 0) \
+            | (16 if st.get("target_tapped") else 0)
     put(46, 2, _seal(2, v))
     return v
 
@@ -153,6 +160,11 @@ def _stats(c):
             "combat": bool(flags & 1), "resting": bool(flags & 2), "group": c[27] if flags & 32 else 0,
             "target": bool(flags & 8), "target_dead": bool(flags & 16),
             "target_level": (None if not flags & 8 or not c[28] else (-1 if c[28] == 63 else c[28])),
+            # (version 6; an older strip draws 0 here: not known)
+            "target_hp": (get(43, 2) - 1) / 10 if flags & 8 and 0 < get(43, 2) <= 1001 else None,     # percent
+            "target_reaction": {1: "hostile", 2: "neutral", 3: "friendly"}.get(c[44] & 3) if flags & 8 else None,
+            "target_player": bool(flags & 8 and c[44] & 4), "target_attackable": bool(flags & 8 and c[44] & 8),
+            "target_tapped": bool(flags & 8 and c[44] & 16),
             "money": get(31, 5) if known & 8 else None,                      # copper
             "bag_free": c[35] if known & 16 else None, "bag_all": get(37, 2) if known & 16 else None,
             "wear": get(39, 2) / 10 if known & 32 else None,                 # most worn piece, percent left
@@ -197,7 +209,7 @@ def decode(img):
         for k in range(n):
             x = x * 64 + v[i + k]
         return x
-    if get(46, 2) != sum(v[i] * (i - 7) for i in range(8, 46)) % 4096 or v[8] not in (1, 2, 3, 4, VERSION):
+    if get(46, 2) != sum(v[i] * (i - 7) for i in range(8, 46)) % 4096 or v[8] not in (1, 2, 3, 4, 5, VERSION):
         return None
     flags, z = v[10], v[11]
     d = {"seq": v[9], "indoors": bool(flags & 2), "taxi": bool(flags & 4), "instance": bool(flags & 8),

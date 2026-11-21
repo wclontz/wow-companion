@@ -2,6 +2,6 @@
 ## Title: Companion Beacon
 ## Notes: Shows your position, level, XP, party and quest log as a small block of coloured squares in the bottom-right corner, for the WoW Companion to read off the screen. Also switches the combat and chat logs on at login. /cbeacon hides or shows it.
 ## Author: WoW Companion
-## Version: 5
+## Version: 6
 
 CompanionBeacon.lua
