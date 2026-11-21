@@ -2420,20 +2420,28 @@ class Tailer(threading.Thread):
                                 and len(LOC.zone.strip()) >= 4 and re.fullmatch(r"[A-Za-z' ]+", LOC.zone.strip()):
                             rooms[LOC.zone.lower()] = inst.cur["name"]      # a room inside this dungeon
                             self.comp.save_rooms()
+                        dbg = {"t": round(time.time(), 1), "label": LOC.zone, "addon": bdg and bdg.get("map_id"),
+                               "had_run": bool(inst.cur)}
                         if inst.cur is None and bdg:
                             # the add-on says "in an instance" + which one: no log line or readable label needed
                             inst.me = self.comp.me
                             inst.on_zone(time.time(), bdg["map_id"], bdg.get("zone") or bdg.get("name"))
+                            dbg["tried"] = "add-on"
                         elif inst.cur is None and LOC.zone:
                             dg = inst.lookup.for_name(LOC.zone) or inst.lookup.for_name(self.comp.room_of(LOC.zone))
+                            dbg["label_is"] = dg and dg.get("map_id")
                             if dg and dg.get("map_id"):
                                 inst.me = self.comp.me
                                 inst.on_zone(time.time(), dg["map_id"], dg.get("zone") or LOC.zone)
+                                dbg["tried"] = "label"
                         elif inst.cur is not None and bdg and bdg.get("map_id") == inst.cur.get("map_id"):
                             pass                             # the add-on still says inside: a misread label can't end the run
                         elif inst.cur is not None and LOC.zone and self.comp.is_outdoor(LOC.zone):
                             # leaving: the label reads an outdoor zone/area (read twice in a row by LOC)
                             inst.on_zone(time.time(), 0, LOC.zone)
+                            dbg["tried"] = "leaving"
+                        dbg["run"] = inst.cur and inst.cur.get("name")
+                        self.comp.run_dbg = dbg
                     self.comp.portrait_level = bs["level"] if bs else LOC.level
                     self._group_snap()
 
@@ -2666,6 +2674,8 @@ class Handler(BaseHTTPRequestHandler):
             snap["strip"] = strip_summary()
             snap["gdi"] = gdi_handles()
             snap["lan"] = lan_urls()
+            snap["run_dbg"] = getattr(COMP, "run_dbg", None)     # the last look at "is this a dungeon run?"
+            snap["mapper_dbg"] = dict(getattr(MAPPER, "dbg", None) or {}) if MAPPER is not None else None
             try:
                 from quests import claude_mode
                 snap["claude"] = claude_mode()               # "on" / "off" / "signed_out" / "missing": quest look-ups
@@ -2958,6 +2968,14 @@ def main():
                 return LOC._grab(rect, box) if rect else None
             MAPPER = MinimapMapper(_mm_grab)
             MAPPER.use_beacon = True                     # the position add-on's strip, when it is on screen
+            try:                                         # dungeons and their rooms by name: frames for the kill
+                from minimapper import norm_place        # shots are kept near one even before a run is known
+                names = {norm_place(v.get("zone") or v["slug"].replace("-", " "))
+                         for v in (COMP.inst.lookup.db.get("_by_map") or {}).values()}
+                names |= {norm_place(k) for k in COMP.dungeon_rooms} | {norm_place(v) for v in COMP.dungeon_rooms.values()}
+                MAPPER.dungeon_names = {n for n in names if n}
+            except Exception as e:
+                print("dungeon names for the mapper:", repr(e), file=sys.stderr)
             MAPPER.grids.resolve_label = lambda lab: COMP.resolve_zone(lab, fallback=False) if lab else None
             try:                                                   # a backup when the newest is 6 h+ old
                 import mapshare

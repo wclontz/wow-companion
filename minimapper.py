@@ -147,6 +147,11 @@ def is_blank(rgba):
 OLD_SHOT_K = {332: 1.2563}
 
 
+def norm_place(name):
+    """A place name as dungeon names are compared: lower case, no "the", single spaces."""
+    return " ".join((name or "").lower().replace("the ", "").split()).strip(" .")
+
+
 def k_indoor():
     """Minimap px per yard in dungeons right now (screen_layout minimap.px_per_yd_in)."""
     try:
@@ -222,7 +227,8 @@ class MinimapMapper(threading.Thread):
         self._grab_raw, self.every = grab, every
         self.grab = self._grab_at             # (every grab goes to where the minimap is on THIS character)
         self.mm_spot = None                   # (cx, cy, r) the add-on's strip last gave for the minimap
-        self.buf = deque(maxlen=600)          # dict(t, png, seg, lx, ly, r) — the last ~10 min (logs can be 5+ min late)
+        self.buf = deque(maxlen=900)          # dict(t, png, seg, lx, ly, r) — the last ~15 min (the log was 7.8 min late on 2026-11-21)
+        self.dungeon_names = set()            # names (lower case, no "the") of dungeons and their rooms: see _near_dungeon
         self.places = {}
         self.lock = threading.Lock()
         self.meta_lock = threading.RLock()    # meta.json is written by the log thread and the mapper thread
@@ -441,6 +447,14 @@ class MinimapMapper(threading.Thread):
         while True:
             t0 = time.time()
             try:
+                if not (self.place_now and self.unit_now != "coords") and t0 - getattr(self, "_keep_t", 0) >= self.every - 0.05:
+                    # No dungeon run is known right now, so the branch below that keeps a frame a second for the
+                    # kill shots is not running. But a run is often only known minutes later, when the late log
+                    # says so (2026-11-21, the open-world Deadmines: 25 kills, 3 pictures). Near a dungeon the
+                    # frames are kept anyway, so those kills find their picture when the log arrives.
+                    self._keep_t = t0
+                    if self._near_dungeon():
+                        self._keep_frame()
                 if self.mapping_on and self.unit_now == "coords" and self.mapping_fast:
                     if self.grids.cur:                     # a loading screen = a warp: the path ends there
                         g_ = self.geom()
@@ -503,6 +517,57 @@ class MinimapMapper(threading.Thread):
             time.sleep(max(0.02, (0.25 if (self.mapping_on and self.mapping_fast) else self.every) - (time.time() - t0)))
 
     # ------------------------------------------------------------- capture + track
+    def _near_dungeon(self):
+        """Does the add-on say you are in, or at, a dungeon: its instance flag, or a zone / minimap name that is a
+        dungeon's or one of its rooms'?"""
+        try:
+            import beacon
+            d = beacon.latest()
+        except Exception:
+            return False
+        if not d:
+            return False
+        if d.get("instance"):
+            return True
+        tx = d.get("texts") or {}
+        return any(norm_place(tx.get(k)) in self.dungeon_names for k in ("zone", "label") if tx.get(k))
+
+    def _keep_frame(self):
+        """One minimap picture into the buffer the kill shots are taken from (and the spool): nothing else."""
+        g = self.geom()
+        cx, cy, r = g["cx"], g["cy"], g["r"]
+        img = self.grab((cx - r, cy - r, cx + r, cy + r))
+        if img is None:
+            return
+        img = img.convert("RGB").resize((2 * r, 2 * r))
+        import time as _tm
+        bad_t, ok_t = getattr(self, "screen_bad_t", 0), getattr(self, "screen_ok_t", None)
+        if np.asarray(img).mean() < 6 or _tm.time() - bad_t < 1.5 or (ok_t is not None and _tm.time() - ok_t > 3):
+            return                                # a loading screen, or not the game
+        img.putalpha(disc_mask(r))
+        bio = io.BytesIO()
+        img.save(bio, "PNG")
+        fr = {"t": time.time(), "png": bio.getvalue(), "seg": "kept", "lx": 0.0, "ly": 0.0, "r": r}
+        with self.lock:
+            self.buf.append(fr)
+        self._spool_save(fr)
+        self.dbg = getattr(self, "dbg", {})
+        self.dbg["frames_kept"] = self.dbg.get("frames_kept", 0) + 1
+
+    def k_shot(self):
+        """Minimap px per yard of an indoor picture taken right now, in the layout's terms. The main character's
+        is the layout's measured one (its indoor zoom is one step in). A character with its own layout whose
+        minimap is zoomed all the way out indoors shows 150 yd to the rim: the frame's radius / 150."""
+        try:
+            if self._spot():
+                import beacon
+                d = beacon.latest()
+                if d and d.get("zoom") == 0:
+                    return self.frame_r() / 150.0
+        except Exception:
+            pass
+        return k_indoor()
+
     def _capture(self):
         place = self.place_now                # (the companion can switch mapping off at any moment)
         if not place:
@@ -1090,7 +1155,7 @@ class MinimapMapper(threading.Thread):
                 rec = {"file": fn, "t": round(t, 2), "saved": round(time.time(), 2), "unit": unit, "kind": kind,
                        "x": round(float(P[0]), 2), "y": round(float(P[1]), 2), "minimap": g}
                 if unit == "world":
-                    rec["kpx"] = round(k_indoor(), 4)      # the scale this picture was taken at
+                    rec["kpx"] = round(self.k_shot(), 4)   # the scale this picture was taken at
                 rec.update({k: (round(v, 2) if isinstance(v, float) else v) for k, v in extra.items()})
                 with open(os.path.join(sess, "clips.jsonl"), "a", encoding="utf-8") as f:
                     f.write(json.dumps(rec) + "\n")
@@ -1119,7 +1184,7 @@ class MinimapMapper(threading.Thread):
                 self._spool_prune_t = _tm.time()
                 for fn in os.listdir(d):
                     try:
-                        if fn.endswith((".jpg", ".png")) and fr["t"] - int(fn[:-4]) / 10 > 660:
+                        if fn.endswith((".jpg", ".png")) and fr["t"] - int(fn[:-4]) / 10 > 960:
                             os.remove(os.path.join(d, fn))
                     except (OSError, ValueError):
                         pass
@@ -1215,7 +1280,7 @@ class MinimapMapper(threading.Thread):
         now = time.time()
         m["cells"][key] = {"file": key + ".png", "px": round(px, 1), "py": round(py, 1), "off": 1000.0, "t": round(now, 1),
                            "u": round(u, 2), "v": round(v, 2), "layer": layer, "fill": True,
-                           "fix_t": round(lv.get("tfix", 0), 1), "kpx": round(k_indoor(), 4)}
+                           "fix_t": round(lv.get("tfix", 0), 1), "kpx": round(self.k_shot(), 4)}
         self.archive(place, "world", now, (lv["x"], lv["y"]), png, kind="walk", estimated=True)
         self.dbg["fills"] = self.dbg.get("fills", 0) + 1
         self._save_meta(place)
