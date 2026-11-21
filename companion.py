@@ -1360,8 +1360,8 @@ class Companion:
             reaction = s_react or reaction
         elif scr_t is None:
             return None
-        name = None
-        if ocr_name:
+        name = s_name or None                    # the add-on's name is exact: no guessing at a known mob's name
+        if ocr_name and not s_name:              # (a name read off the screen may be a letter or two out)
             known = {n for n, ms in self.mobstats.items() if ms["my_dmg"] or ms["their_hits"] or ms["maxhp"]}
             best = max(known, key=lambda n: SequenceMatcher(None, n.lower(), ocr_name.lower()).ratio(), default=None)
             name = best if best and SequenceMatcher(None, best.lower(), ocr_name.lower()).ratio() >= 0.75                 else ocr_name.title()
