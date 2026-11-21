@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dungeon Live</title>
+<style>
+:root{
+  --bg:#0b0907; --panel:#15110d; --line:#33291d; --gold:#f0c968; --gold2:#a8843a;
+  --text:#ece4d6; --dim:#8f8473; --hp:#46c957; --mana:#4a86ee; --red:#e9563f; --boss:#c77dff; --yellow:#ffd84a;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:radial-gradient(ellipse at top,#1b150f 0%,var(--bg) 70%);color:var(--text);
+  font-family:"Segoe UI",system-ui,sans-serif;font-size:1.55vh;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:1.4vh;padding:.8vh 1.6vh;border-bottom:1px solid var(--line)}
+.top .name{font:600 2.6vh Georgia,serif;color:var(--gold)}
+.pill{padding:.3vh 1vh;border-radius:2vh;border:1px solid var(--line);color:var(--dim);font-size:1.45vh;white-space:nowrap}
+.pill.live{color:#fff;background:#3b2470;border-color:var(--boss)}
+.pct{width:16vh;height:1.6vh;background:#241d16;border-radius:1vh;overflow:hidden;position:relative}
+.pct i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#7a2fc0,var(--boss))}
+.pct span{position:absolute;inset:0;font-size:1.15vh;display:flex;align-items:center;justify-content:center;font-weight:700}
+.top a{color:var(--gold2);font-size:1.45vh;text-decoration:none}
+.runs{display:flex;gap:.8vh;padding:.7vh 1.6vh;border-bottom:1px solid var(--line);overflow-x:auto;min-height:7.4vh}
+.run{flex:none;border:1px solid var(--line);border-radius:.7vh;padding:.5vh .9vh;cursor:pointer;background:#17120d;min-width:19vh;max-width:32vh}
+.run:hover{border-color:var(--gold2)}
+.run.sel{border-color:var(--gold);box-shadow:0 0 1.2vh rgba(240,201,104,.2) inset}
+.run .h{display:flex;gap:.6vh;align-items:baseline;font-weight:700}
+.run .s{font-size:1.25vh;color:var(--dim)}
+.badge{font-size:1.05vh;font-weight:800;border-radius:.3vh;padding:0 .4vh;margin-left:.3vh}
+.b-best{background:var(--gold);color:#111} .b-safe{background:#9fe0a8;color:#111}
+.grid{flex:1;display:grid;gap:1vh;padding:1vh 1.6vh 1.4vh;min-height:0;
+  grid-template-columns:1.3fr 1fr 1fr .85fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
+.card{background:linear-gradient(180deg,#19140f,#120f0b);border:1px solid var(--line);border-radius:1vh;
+  padding:1vh 1.3vh;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.card h3{margin:0 0 .6vh;font-size:1.25vh;font-weight:600;text-transform:uppercase;letter-spacing:.25vh;color:var(--gold2);display:flex;gap:.8vh;align-items:center}
+.map{grid-row:1 / span 2}
+.lootc{grid-column:4;grid-row:1 / span 2}
+.li{display:flex;align-items:center;gap:.6vh;padding:.25vh 0;border-bottom:1px solid #241d15;font-size:1.35vh;cursor:default}
+.li img{width:2.2vh;height:2.2vh;border-radius:.3vh;border:1px solid currentColor}
+.li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .val{font-variant-numeric:tabular-nums;color:#e6c35c;white-space:nowrap}
+.q0{color:#9d9d9d} .q1{color:#ffffff} .q2{color:#1eff00} .q3{color:#0070dd} .q4{color:#a335ee} .q5{color:#ff8000} .q7{color:#e6cc80}
+#itip{position:fixed;z-index:50;pointer-events:none;background:#070b14f0;border:1px solid #5a6a8a;border-radius:.5vh;
+  padding:.8vh 1vh;font-size:1.35vh;line-height:1.45;min-width:22vh;max-width:34vh;color:#fff;box-shadow:0 .5vh 2vh #000a}
+#itip .nm{font-size:1.5vh;font-weight:700} #itip .use{color:#1eff00} #itip .stat{color:#fff}
+#itip .row{display:flex;justify-content:space-between;gap:2vh} #itip .ft{margin-top:.5vh;color:#e6c35c}
+#itip .dim{color:#9a8f80}
+canvas{flex:1;min-height:0;height:0;width:100%;display:block;border-radius:.6vh;background:#0e0b08}
+.dim{color:var(--dim)} .small{font-size:1.3vh}
+.big{font-size:2.3vh;font-weight:700}
+.list{flex:1;min-height:0;overflow:auto}
+.chip{display:inline-block;margin:.25vh .4vh 0 0;padding:.05vh .55vh;border-radius:.4vh;background:#241d16;font-size:1.25vh}
+.chip.damage{background:#3a2210;color:#ffc08a} .chip.debuff{background:#2a1840;color:#d8b0ff} .chip.heal{background:#173a1b;color:#9fe0a8}
+.danger{font-size:1.1vh;font-weight:800;border-radius:.3vh;padding:0 .5vh}
+.d-high{background:var(--red);color:#fff} .d-low{background:#2f5a34;color:#cfe} .d-normal{background:#4a3d25;color:#ffe08a}
+.prio{color:#ff9a7a;font-weight:600}
+.tb{display:grid;grid-template-columns:3vh 1fr auto;gap:.6vh;padding:.35vh 0;border-bottom:1px solid #241d15;align-items:center;font-size:1.35vh}
+.tb.done{opacity:.4}
+.adv{margin-top:.5vh;padding:.45vh .7vh;border-radius:.5vh;background:#2a1a10;border:1px solid #6a3a20;color:#ffc9a8;font-size:1.35vh}
+.ready{font-size:2.4vh;font-weight:800;letter-spacing:.2vh}
+.ready.go{color:var(--hp)} .ready.wait{color:var(--yellow)} .ready.stop{color:var(--red)}
+.mem{display:grid;grid-template-columns:2.6vh 14vh 1fr 5.5vh;gap:.6vh;align-items:center;padding:.3vh 0;font-size:1.35vh}
+.mem .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.bars{display:flex;flex-direction:column;gap:.2vh}
+.bar{height:1.3vh;border-radius:.3vh;background:#241d16;position:relative;overflow:hidden}
+.bar>i{position:absolute;inset:0 auto 0 0}
+.bar.hp>i{background:var(--hp)} .bar.mp>i{background:var(--mana)}
+.bar span{position:absolute;inset:0;font-size:1vh;display:flex;align-items:center;justify-content:center;font-weight:700;text-shadow:0 1px 2px #000}
+.flag{font-size:1vh;font-weight:800;border-radius:.3vh;padding:0 .35vh;margin-left:.3vh}
+.f-rip{background:#ff9a3a;color:#111} .f-loose{background:#e9563f;color:#fff}
+.alog{font-size:1.25vh;padding:.2vh 0;border-bottom:1px solid #241d15}
+.aggro{color:#fff;background:var(--red);border-radius:.3vh;padding:0 .4vh;font-size:1vh;font-weight:800}
+table{width:100%;border-collapse:collapse;font-size:1.35vh}
+th{color:var(--dim);font-weight:500;text-align:right;padding:.25vh .4vh;border-bottom:1px solid var(--line)}
+td{text-align:right;padding:.3vh .4vh;border-bottom:1px solid #241d15;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+.ahead{color:var(--hp)} .behind{color:var(--red)}
+.fight{border:1px solid var(--red);border-radius:.7vh;padding:.6vh .8vh;background:#2a120d;margin-bottom:.6vh}
+.empty{color:var(--dim);padding:1vh 0}
+#tip{position:fixed;pointer-events:none;background:#0f0c09;border:1px solid var(--gold2);border-radius:.6vh;
+  padding:.7vh .9vh;font-size:1.4vh;line-height:1.4;max-width:34vh;z-index:9;box-shadow:0 .5vh 2vh #000}
+#tip b{color:var(--gold)}
+.out{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1vh;color:var(--dim);font-size:2vh;text-align:center}
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="name" id="dname">Dungeon</span>
+  <span class="pill" id="live">—</span>
+  <span class="pill" id="logsWarn" hidden style="background:#8a1f12;color:#fff;font-weight:800"></span>
+  <div class="pct" title="% complete (share of the guide run's mobs cleared)"><i id="pctBar" style="width:0"></i><span id="pctTxt">0%</span></div>
+  <span class="pill" id="bossPill">—</span>
+  <span class="pill" id="deathPill">—</span>
+  <span class="pill" id="etaPill">—</span>
+  <span style="margin-left:auto"></span>
+  <a href="/hud">HUD</a> <a href="/group">group</a> <a href="/map">map</a> <a href="/instance">look-back</a>
+</div>
+<div class="runs" id="runs"></div>
+
+<div class="grid" id="grid">
+  <section class="card map">
+    <h3>Route <span class="dim" id="mapNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <canvas id="map"></canvas>
+  </section>
+  <section class="card">
+    <h3>Next pull <span class="dim" id="pullNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <div class="list" id="nextPull"></div>
+  </section>
+  <section class="card">
+    <h3>Group <span class="dim" id="grpNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <div class="list" id="group"></div>
+  </section>
+  <section class="card">
+    <h3>Next boss <span class="dim" id="bossNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <div class="list" id="nextBoss"></div>
+  </section>
+  <section class="card">
+    <h3>This pull, now vs guide &amp; pace</h3>
+    <div class="list" id="pace"></div>
+  </section>
+  <section class="card lootc">
+    <h3>Loot <span class="dim" id="lootNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <div class="list" id="loot"></div>
+  </section>
+</div>
+<div id="tip" hidden></div>
+<div id="itip" hidden></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n == null || !isFinite(n) ? "—" : Math.round(n).toLocaleString();
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function dur(s){ if (s == null) return "—"; const neg = s < 0; s = Math.abs(Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return (neg ? "-" : "") + (h ? `${h}h ${m}m` : m ? `${m}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`); }
+const CLASS = {Warrior: "#C79C6E", Paladin: "#F58CBA", Hunter: "#ABD473", Rogue: "#FFF569", Priest: "#FFFFFF",
+               Mage: "#69CCF0", Warlock: "#9482C9", Druid: "#FF7D0A", Shaman: "#2E8CFF"};
+const ROLE = {tank: "🛡", healer: "✚", dps: "⚔"};
+let D = null, guide = null, hits = [];
+
+const mobsTxt = m => Object.entries(m || {}).map(([n, c]) => `${c}× ${esc(n)}`).join(" + ");
+const chips = moves => (moves || []).filter(x => x.kind !== "melee").slice(0, 4).map(x =>
+  `<span class="chip ${x.kind}">${esc(x.spell)}${x.avg ? " " + (x.kind === "heal" ? "+" : "") + Math.round(x.avg) : ""}</span>`).join("");
+const dangerTag = d => d ? `<span class="danger d-${d}">${d === "high" ? "⚠ DANGEROUS" : d === "low" ? "easy" : "normal"}</span>` : "";
+
+// ---- item hover tooltip (WoW style, from the Wowhead data cached in itemcache.json)
+let ITEMS = {};
+function coinI(c){ c = c || 0; if (!c) return "—"; const g = Math.floor(c / 10000), s = Math.floor(c / 100) % 100, k = c % 100;
+  return (g ? g + "g " : "") + (g || s ? s + "s " : "") + k + "c"; }
+function itemRow(l){
+  ITEMS[l.item] = l;
+  return `<div class="li q${l.q ?? 1}" data-item="${esc(l.item)}">
+    ${l.icon ? `<img src="https://wow.zamimg.com/images/wow/icons/small/${l.icon}.jpg" alt="">` : ""}
+    <span class="nm">${l.rolls ? "🎲 " : ""}${esc(l.item)}${l.n > 1 ? ` ×${l.n}` : ""} <span class="dim">· ${esc(Object.keys(l.who).join(", "))}</span></span>
+    <span class="val">${l.q == null ? '<span class="dim">…</span>' : coinI(l.value)}</span></div>`;
+}
+function itemTip(l){
+  const lines = (l.tt || [["name", l.item]]).map(([k, t]) => k === "name" ? `<div class="nm q${l.q ?? 1}">${esc(t)}</div>`
+    : t.includes("\t") ? `<div class="row"><span>${esc(t.split("\t")[0])}</span><span>${esc(t.split("\t")[1])}</span></div>`
+    : `<div class="${k}">${esc(t)}</div>`).join("");
+  const who = Object.entries(l.who).map(([w, n]) => esc(w) + (n > 1 ? " ×" + n : "")).join(", ");
+  return lines + `<div class="ft">Sell ${coinI(l.sell)}${l.n > 1 ? ` · ×${l.n} = ${coinI(l.value)}` : ""}</div>
+    <div class="dim">${l.rolls ? "🎲 won on a roll · " : ""}${who}</div>`;
+}
+document.addEventListener("mousemove", e => {
+  const el = e.target.closest && e.target.closest("[data-item]"), tip = document.getElementById("itip");
+  if (!el || !ITEMS[el.dataset.item]) { tip.hidden = true; return; }
+  tip.innerHTML = itemTip(ITEMS[el.dataset.item]); tip.hidden = false;
+  tip.style.left = Math.max(8, Math.min(e.clientX + 16, innerWidth - tip.offsetWidth - 8)) + "px";
+  tip.style.top = Math.max(8, Math.min(e.clientY + 16, innerHeight - tip.offsetHeight - 8)) + "px";
+});
+
+function renderLoot(d){
+  const L = d.loot || [], val = L.reduce((a, l) => a + l.value, 0), meName = (((d.group || {}).members || []).find(m => m.me) || {}).name, mine = L.filter(l => (meName && l.who[meName]) || l.who.You).length;
+  $("lootNote").textContent = L.length ? `· ${coinI(val)} vendor${d.coin ? " · " + coinI(d.coin) + " coin" : ""}${mine ? ` · ${mine} yours` : ""}` : "";
+  $("loot").innerHTML = L.length ? L.map(itemRow).join("")
+    : `<div class="empty dim">No loot yet this run. (Needs <b>/chatlog</b> on.)</div>`;
+}
+
+function renderTop(d){
+  $("dname").textContent = d.name;
+  $("live").textContent = d.pending ? "READY · clock starts at the first kill" : d.cleared ? `CLEARED · ${dur(d.elapsed)}` : d.finished ? `RUN OVER · ${dur(d.elapsed)}` : `LIVE · ${dur(d.elapsed)} · first pull ${new Date(d.run_start * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`;
+  $("live").className = "pill live"; $("live").style.background = d.finished ? "#2f5a34" : "";
+  $("pctBar").style.width = d.pct + "%"; $("pctTxt").textContent = `${d.pct}% · ${d.mobs_left} mobs left`;
+  $("bossPill").textContent = `bosses ${d.bosses_done.length}/${d.bosses.length}`;
+  $("deathPill").textContent = `deaths ${d.deaths}`; $("deathPill").style.color = d.deaths ? "#e9563f" : "";
+  if (d.eta) {
+    const v = d.eta.vs_guide;
+    $("etaPill").innerHTML = `done in ~${dur(d.eta.finish_in)} · <span class="${v > 30 ? "behind" : v < -30 ? "ahead" : ""}">${v > 0 ? "+" : ""}${dur(v)} vs guide</span>`;
+  } else $("etaPill").textContent = "first run: no guide yet";
+}
+
+const CLS_C = {Warrior: "#c79c6e", Paladin: "#f58cba", Hunter: "#abd473", Rogue: "#fff569", Priest: "#ffffff",
+  Shaman: "#0070de", Mage: "#69ccf0", Warlock: "#9482c9", Druid: "#ff7d0a"};
+function memList(ms, names){
+  if (!ms || !ms.length) return esc((names || []).join(", "));
+  const rng = (a, b) => a ? a + (b && b !== a ? "→" + b : "") : "";
+  return ms.map(m => `<span style="color:${CLS_C[m.cls] || "#d8cfc0"}" title="${esc(m.cls || "class unknown")}${m.lvl ? ` · level ${rng(m.lvl, m.lvl_end)}` : " · level not seen (target them in the instance to record it)"}${m.gear ? ` · gear (avg item level) ${rng(m.gear, m.gear_end)}` : ""}">${esc(m.name)}${m.lvl ? ` <b>${rng(m.lvl, m.lvl_end)}</b>` : ` <b class="dim">?</b>`}${m.gear ? `<span class="dim" style="font-size:.85em"> ⚙${rng(m.gear, m.gear_end)}</span>` : ""}</span>`).join(", ");
+}
+function renderRuns(d){
+  $("runs").innerHTML = d.runs.length ? d.runs.map(h => `<div class="run ${h.key === d.guide_key ? "sel" : ""}" data-k="${h.key}">
+      <div class="h">${new Date(h.start * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}
+        ${h.best ? '<span class="badge b-best">★ BEST</span>' : ""}${h.safest ? '<span class="badge b-safe">SAFEST</span>' : ""}</div>
+      <div class="s">${dur(h.dur)} · bosses ${h.bosses}/${h.of} · ✝ ${h.deaths}${h.wipes ? ` · ${h.wipes} wipe${h.wipes > 1 ? "s" : ""}` : ""} · ${h.pulls} pulls · ${fmt(h.xp)} XP</div>
+      <div class="s">${memList(h.members, h.party)} ${(h.snaps || []).map((f, i) => `<a href="/snaps/${f}" target="_blank" title="party frames ${i ? "3 min in" : "on the way in"}" onclick="event.stopPropagation()">📷</a>`).join(" ")}</div></div>`).join("")
+    : `<span class="dim" style="align-self:center">First time in here: this run becomes your guide for next time.</span>`;
+  document.querySelectorAll(".run").forEach(el => el.onclick = () => { guide = el.dataset.k; tick(); });
+}
+
+function renderNext(d){
+  const p = d.next_pull;
+  $("pullNote").textContent = d.guide ? `· ${d.pulls_left} pulls left` : "";
+  if (!d.guide) { $("nextPull").innerHTML = `<div class="empty">No earlier run to guide you yet. Every pull this run is recorded, so next time this shows what's coming.</div>`; }
+  else if (!p) { $("nextPull").innerHTML = `<div class="empty">All of the guide's pulls are done.</div>`; }
+  else {
+    $("nextPull").innerHTML = `
+      <div class="big">#${p.n} ${mobsTxt(p.mobs)}</div>
+      <div>${dangerTag(p.danger)} ${p.yards != null ? `<b>${fmt(p.yards)} yd ${p.compass}</b>` : ""}</div>
+      <div class="dim small">last time: ${dur(p.dur)} · ${fmt(p.taken)} damage taken · ${fmt(p.healed)} healed${p.deaths.length ? ` · <span style="color:#e9563f">✝ ${esc(p.deaths.join(", "))}</span>` : ""}</div>
+      ${p.priority.length ? `<div class="prio">Kill / interrupt first: ${esc(p.priority.join(", "))}</div>` : ""}
+      ${Object.entries(p.what).map(([m, mv]) => mv.length ? `<div class="small">${esc(m)}: ${chips(mv)}</div>` : "").join("")}
+      <div style="margin-top:.8vh" class="dim small">Until ${esc(d.next_boss ? d.next_boss.name : "the end")}: <b style="color:#ece4d6">${d.to_boss.length} pull${d.to_boss.length === 1 ? "" : "s"} · ${d.mobs_to_boss} mobs</b></div>
+      ${d.to_boss.slice(0, 8).map(x => `<div class="tb"><span class="dim">#${x.n}</span><span>${mobsTxt(x.mobs)}</span><span>${dangerTag(x.danger)}</span></div>`).join("")}`;
+  }
+  const b = d.next_boss;
+  $("bossNote").textContent = b ? `· ${d.to_boss.length} pull${d.to_boss.length === 1 ? "" : "s"} away` : "";
+  if (!b) { $("nextBoss").innerHTML = `<div class="empty">All bosses down. 🎉</div>`; return; }
+  const adv = [];
+  if (b.last_attempts > 1) adv.push(`Wiped here ${b.last_attempts - 1}× last time.`);
+  if (b.last_deaths && b.last_deaths.length) adv.push(`${b.last_deaths.length} died here last time: ${b.last_deaths.join(", ")}.`);
+  if (b.adds && Object.keys(b.adds).length) adv.push(`Comes with adds: ${Object.entries(b.adds).map(([m, c]) => `${c}× ${m}`).join(", ")}.`);
+  if (b.heals) adv.push(`It heals: burst or interrupt.`);
+  const myMana = d.screen && d.screen.ok ? d.screen.mana : null;
+  if (myMana != null && myMana < 0.7) adv.push(`Your mana is ${Math.round(myMana * 100)}%: drink before pulling the boss.`);
+  $("nextBoss").innerHTML = `
+    <div class="big" style="color:#e2c6ff">${esc(b.name)}</div>
+    <div>${b.yards != null ? `<b>${fmt(b.yards)} yd ${b.compass}</b> · ` : ""}<span class="dim">${b.last_kill ? `killed in ${dur(b.last_kill)} last time` : "not killed before"}</span></div>
+    <div>${chips(b.moves) || '<span class="dim small">no abilities recorded yet</span>'}</div>
+    ${(b.moves || []).find(x => x.kind === "melee") ? `<div class="dim small">melee ~${Math.round(b.moves.find(x => x.kind === "melee").avg)} (max ${b.moves.find(x => x.kind === "melee").max})</div>` : ""}
+    ${adv.map(a => `<div class="adv">${esc(a)}</div>`).join("")}`;
+}
+
+function renderGroup(d){
+  const g = d.group || {members: []}, p = d.player || {}, sc = d.screen || {};
+  // "now" by the log's clock (it arrives minutes late: by the real clock nothing is ever recent)
+  const ms = g.members.slice(), nowLog = Math.max(0, ...ms.map(m => m.seen || 0)) || Date.now() / 1000;
+  // ready check: everyone's HP, healers' and your mana
+  const hpLow = ms.filter(m => (m.hp_frac ?? (m.maxhp ? m.hp / m.maxhp : 1)) < 0.7).map(m => m.name);
+  const myMana = sc.ok ? sc.mana : (p.maxpower ? p.power / p.maxpower : null);
+  const bossNext = d.next_pull && d.next_pull.boss;
+  let verdict = "go", why = "Everyone's topped up.";
+  if (d.fight) { verdict = "stop"; why = "In combat."; }
+  else if (myMana != null && myMana < (bossNext ? 0.8 : 0.4)) { verdict = "stop"; why = `Your mana ${Math.round(myMana * 100)}%: drink${bossNext ? " (boss next)" : ""}.`; }
+  else if (hpLow.length) { verdict = "wait"; why = `Low HP: ${hpLow.join(", ")}.`; }
+  else if (myMana != null && myMana < (bossNext ? 0.95 : 0.6)) { verdict = "wait"; why = `Your mana ${Math.round(myMana * 100)}%.`; }
+  const runway = myMana != null && d.mana_per_kill && p.maxpower && d.next_pull
+    ? Math.floor(myMana * p.maxpower / (d.mana_per_kill * Math.max(1, d.next_pull.size))) : null;
+  $("grpNote").textContent = `· ${ms.length} player${ms.length === 1 ? "" : "s"}`;
+  $("group").innerHTML = `<div class="ready ${verdict}">${verdict === "go" ? "READY" : verdict === "wait" ? "WAIT" : verdict === "stop" && d.fight ? "FIGHTING" : "DRINK"}</div>
+    <div class="dim small" style="margin-bottom:.6vh">${esc(why)}${runway != null ? ` · your mana ≈ ${runway} pull${runway === 1 ? "" : "s"} like the next one` : ""}</div>` +
+    ms.map(m => {
+      const hp = m.hp_frac ?? (m.maxhp ? m.hp / m.maxhp : (m.me && sc.ok ? sc.hp : null));
+      const mp = m.mana_frac ?? (m.me && sc.ok ? sc.mana : (m.maxpower ? m.power / m.maxpower : null));
+      const agg = (d.group.loose || []).some(x => x.on === m.name && nowLog - x.t < 15);
+      const flags = (m.faults ? `<span class="flag" style="background:#6a1c12;color:#fff" title="aggro problems that were this player's fault">FAULT ×${m.faults}</span>` : "") +
+        (m.rips ? `<span class="flag f-rip" title="pulled threat off the tank ${m.rips}×">RIPPED ×${m.rips}</span>` : "") +
+        (m.role === "tank" && m.loose_mobs ? `<span class="flag f-loose" title="mobs that never got onto the tank">LOOSE ×${m.loose_mobs}</span>` : "");
+      const ro = (d.roster || {})[m.name] || (d.roster || {})[String(m.name).split(" ")[0]] || {};
+      const lg = `${ro.lvl ? ` <b style="color:#e6dcc8">${ro.lvl}</b>` : ""}${ro.gear ? `<span class="dim" title="gear: average item level from the combat log"> ⚙${ro.gear_end || ro.gear}</span>` : ""}`;
+      return `<div class="mem"><span>${ROLE[m.role] || "⚔"}</span><span class="n" style="color:${CLASS[m.cls] || "#d8cfc0"}" title="${esc(m.name)}${ro.lvl ? " · level " + ro.lvl : ""}${ro.gear ? " · gear (avg item level) " + (ro.gear_end || ro.gear) : ""}">${esc(m.name)}${lg}${flags}</span>
+        <div class="bars"><div class="bar hp"><i style="width:${(hp ?? 0) * 100}%"></i><span>${hp != null ? Math.round(hp * 100) + "%" : "—"}</span></div>
+          ${mp != null ? `<div class="bar mp"><i style="width:${mp * 100}%"></i></div>` : ""}</div>
+        <span class="small">${agg ? '<span class="aggro">AGGRO</span>' : m.inc10 ? `<span style="color:#ff9a7a">-${fmt(m.inc10)}</span>` : m.dist != null && !m.in_range ? '<span style="color:#e9563f">far</span>' : ""}</span></div>`;
+    }).join("") + aggroLog(g);
+}
+
+function aggroLog(g){
+  const log = (g.aggro_log || []).filter(x => Date.now() / 1000 - x.t < 900).slice(0, 4);
+  if (!log.length) return "";
+  return `<div class="dim small" style="margin-top:.6vh">Aggro: whose fault</div>` + log.map(x => `<div class="alog">${x.kind === "rip"
+    ? `<span style="color:#ff9a3a">⚠ ${esc(x.who)}</span> took <b>${esc(x.mob)}</b>${x.tank ? ` off ${esc(x.tank)}` : ""}`
+    : `<span style="color:#e9563f">⚠ ${esc(x.mob)}</span> went to ${esc(x.who)}, never on the tank`}
+    <br><span class="small">→ <b style="color:${x.fault === x.tank ? "#e9563f" : "#ff9a3a"}">${esc(x.fault || "?")}'s fault</b>: <span class="dim">${esc(x.why || "")}</span></span></div>`).join("");
+}
+
+function renderPace(d){
+  const f = d.fight;
+  const fightHtml = f ? `<div class="fight"><b style="color:#ff9a7a">⚔ PULL ${dur(f.dur)}</b>${f.boss ? ` · <b style="color:#e2c6ff">${esc(f.boss)}</b>` : ""}<br>
+      ${mobsTxt(f.mobs)}<br><span class="small">taken ${fmt(f.taken)} · healed ${fmt(f.healed)} · dealt ${fmt(f.dealt)}${f.deaths.length ? ` · ✝ ${esc(f.deaths.join(", "))}` : ""}</span></div>`
+    : `<div class="dim" style="margin-bottom:.6vh">Out of combat for ${dur(d.since_pull)} · ${d.pulls_done} pulls done · ${fmt(d.kills)} kills</div>`;
+  const sp = d.splits.map(x => `<tr><td>${esc(x.boss)}</td><td>${x.mine != null ? dur(x.mine) : "—"}</td><td>${x.guide != null ? dur(x.guide) : "—"}</td>
+      <td class="${x.delta > 0 ? "behind" : x.delta < 0 ? "ahead" : ""}">${x.delta != null ? (x.delta > 0 ? "+" : "") + dur(x.delta) : ""}</td></tr>`).join("");
+  // now vs the selected guide run, at the same point (lower is better except kills/healing)
+  const c = d.compare;
+  let cmp = "";
+  if (c) {
+    const row = (label, v, betterLow, fmtf) => {
+      const [a, b] = v, f = fmtf || fmt;
+      if (a == null || b == null) return `<tr><td>${label}</td><td>${a != null ? f(a) : "—"}</td><td>${b != null ? f(b) : "—"}</td><td></td></tr>`;
+      const diff = a - b, good = betterLow ? diff < 0 : diff > 0, same = Math.abs(diff) < 1e-9;
+      return `<tr><td>${label}</td><td>${f(a)}</td><td>${f(b)}</td><td class="${same ? "" : good ? "ahead" : "behind"}">${same ? "=" : (diff > 0 ? "+" : "-") + f(Math.abs(diff))}</td></tr>`;
+    };
+    cmp = `<table style="margin-bottom:.7vh"><thead><tr><th>Now vs guide</th><th>Now</th><th>Guide here</th><th>±</th></tr></thead><tbody>
+      ${row("Time", c.time, true, dur)}${row("Pulls", c.pulls, false)}${row("Kills", c.kills, false)}${row("Deaths", c.deaths, true)}
+      ${row("Damage taken", c.taken, true)}${row("Healing done", c.healed, true)}${row("Avg pull", c.avg_pull, true, dur)}</tbody></table>
+      ${c.pairs.length ? `<div class="dim small">Last pulls, now / then:</div>` + c.pairs.map(p => `<div class="tb"><span class="dim">#${p.n}</span>
+        <span class="small">${p.boss ? `<b style="color:#e2c6ff">${esc(p.boss)}</b>` : mobsTxt(p.mobs)}</span>
+        <span class="small ${p.dur[0] <= p.dur[1] ? "ahead" : "behind"}">${dur(p.dur[0])} / ${dur(p.dur[1])} · ${fmt(p.taken[0])} / ${fmt(p.taken[1])} dmg${p.deaths[0] ? ` · ✝${p.deaths[0]}` : ""}</span></div>`).join("") : ""}`;
+  }
+  $("pace").innerHTML = fightHtml + cmp + `<table><thead><tr><th>Boss</th><th>This run</th><th>Guide</th><th>±</th></tr></thead><tbody>${sp}</tbody></table>`;
+}
+
+
+// a map stitched from the minimap alone (not lined up with the log yet): show it by itself, with you on it
+function drawLoose(ctx, w, h, U, redraw){
+  if (!window._ulImg || window._ulImg._src !== U.url) { const im = new Image(); im._src = U.url; im.src = U.url; im.onload = redraw; window._ulImg = im; }
+  const im = window._ulImg;
+  if (!(im.complete && im.naturalWidth)) return;
+  const k = Math.min((w - 20) / U.size[0], (h - 30) / U.size[1], 3), ox = (w - U.size[0] * k) / 2, oy = (h - 10 - U.size[1] * k) / 2;
+  ctx.drawImage(im, ox, oy, U.size[0] * k, U.size[1] * k);
+  if (U.me) {
+    const a = ox + U.me[0] * k, b = oy + U.me[1] * k;
+    ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 7, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = "rgba(240,201,104,.5)"; ctx.beginPath(); ctx.arc(a, b, 12 + (Date.now() / 120 % 8), 0, 7); ctx.stroke();
+  }
+}
+
+function logsBanner(s){
+  const L = s.logs, el = document.getElementById("logsWarn");
+  if (!el) return;
+  if (L && L.off && L.off.length) { el.hidden = false; el.textContent = `⚠ Logs look OFF: type ${L.off.join(" and ")} in game (they turn off at every logout)`; }
+  else el.hidden = true;
+}
+// map: follow (you centred) by default; wheel = zoom, double-click = whole route / follow
+let mapFollow = true;
+function mapZoom(){ let z = 1; try { z = parseFloat(localStorage.getItem("dgZoom")) || 1; } catch (_) {} return z; }
+addEventListener("wheel", e => {
+  if (!e.target || e.target.id !== "map") return;
+  e.preventDefault();
+  const z = Math.max(0.15, Math.min(5, mapZoom() * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  try { localStorage.setItem("dgZoom", z); } catch (_) {}
+  mapFollow = true; if (D) drawMap(D);
+}, {passive: false});
+addEventListener("dblclick", e => { if (e.target && e.target.id === "map") { mapFollow = !mapFollow; if (D) drawMap(D); } });
+
+function drawMap(d){
+  const cv = $("map"), r = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * r) || cv.height !== Math.round(h * r)) { cv.width = Math.round(w * r); cv.height = Math.round(h * r); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(r, 0, 0, r, 0, 0); ctx.clearRect(0, 0, w, h);
+  hits = [];
+  const g = d.guide;
+  const pts = [];
+  (g ? g.trail : []).forEach(p => pts.push([p[1], p[2]])); (d.trail || []).forEach(p => pts.push([p[1], p[2]]));
+  if (d.underlay && d.underlay.pinned === false) {     // minimap map not lined up with the log yet: show it alone
+    drawLoose(ctx, w, h, d.underlay, () => drawMap(D));
+    ctx.fillStyle = "#8f8473"; ctx.font = "11px Segoe UI"; ctx.fillText("🗺 " + (d.minimap_status || "") + " · lines up with the route once the log has your position", 10, h - 8);
+    return;
+  }
+  if (!pts.length) { ctx.fillStyle = "#6a5f50"; ctx.font = "14px Segoe UI"; ctx.fillText("Your route is drawn as you go.", 14, 24); return; }
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of pts) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+  let sc = Math.min((w - 40) / Math.max(40, maxY - minY), (h - 40) / Math.max(40, maxX - minX));
+  let cx = (minY + maxY) / 2, cy = (minX + maxX) / 2;
+  if (d.me && mapFollow) {      // you in the middle (your spot at the end of the last fight), the map slides
+    sc = ((d.underlay && d.underlay.k) || 2.2) * mapZoom(); cx = d.me[1]; cy = d.me[0];
+  }
+  const P = (x, y) => [w / 2 - (y - cx) * sc, h / 2 - (x - cy) * sc];
+  const line = (tr, col, lw, dash) => { if (!tr || tr.length < 2) return; ctx.setLineDash(dash || []); ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath();
+    tr.forEach((p, i) => { const [a, b] = P(p[1], p[2]);
+      const jump = i && Math.hypot(p[1] - tr[i - 1][1], p[2] - tr[i - 1][2]) > 40;     // death / ghost run / teleport
+      i && !jump ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); ctx.setLineDash([]); };
+  // the dungeon's real layout, stitched from your minimap (fills in as you explore)
+  const U = d.underlay;
+  if (U) {
+    if (!window._ulImg || window._ulImg._src !== U.url) { const im = new Image(); im._src = U.url; im.src = U.url; im.onload = () => drawMap(D); window._ulImg = im; }
+    const im = window._ulImg;
+    if (im.complete && im.naturalWidth) {
+      ctx.globalAlpha = .85;
+      ctx.drawImage(im, w / 2 + (U.origin[0] / U.k + cx) * sc, h / 2 + (U.origin[1] / U.k + cy) * sc, U.size[0] / U.k * sc, U.size[1] / U.k * sc);
+      ctx.globalAlpha = 1;
+    }
+  }
+  if (d.minimap_status) { ctx.fillStyle = "#8f8473"; ctx.font = "11px Segoe UI"; ctx.fillText("🗺 " + d.minimap_status, 10, h - 10); }
+  if (g) line(g.trail, "rgba(180,170,150,.35)", 2);
+  line(d.trail, "rgba(240,201,104,.95)", 3);
+  ctx.font = "bold 10px Segoe UI"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  // guide pulls, numbered; done ones faded
+  (g ? g.fights : []).forEach(f => {
+    if (!f.pos) return; const [a, c] = P(f.pos[0], f.pos[1]);
+    const isNext = d.next_pull && f.n === d.next_pull.n;
+    if (f.boss) {
+      ctx.globalAlpha = f.done ? .35 : 1; ctx.fillStyle = "#c77dff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(a, c - 10); ctx.lineTo(a + 10, c); ctx.lineTo(a, c + 10); ctx.lineTo(a - 10, c); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.fillStyle = "#e2c6ff"; ctx.textAlign = "left"; ctx.font = "bold 12px Segoe UI"; ctx.fillText(f.boss, a + 13, c);
+      ctx.textAlign = "center"; ctx.font = "bold 10px Segoe UI";
+    } else {
+      const rad = 7 + Math.min(f.size, 6);
+      ctx.globalAlpha = f.done ? .3 : 1;
+      ctx.fillStyle = f.size >= 3 ? "rgba(255,216,74,.9)" : "rgba(70,201,87,.9)";
+      ctx.strokeStyle = f.danger === "high" || f.deaths.length ? "#e9563f" : "#000"; ctx.lineWidth = f.deaths.length ? 3 : 1.5;
+      ctx.beginPath(); ctx.arc(a, c, rad, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#111"; ctx.fillText(f.done ? "✓" : f.n, a, c + 1); ctx.globalAlpha = 1;
+    }
+    if (isNext) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(a, c, 18 + (Date.now() / 150 % 6), 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+    hits.push({x: a, y: c, r: 14, f});
+  });
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  if (g && g.start) { const [a, c] = P(g.start[0], g.start[1]); ctx.fillStyle = "#46c957"; ctx.strokeStyle = "#000";
+    ctx.beginPath(); ctx.moveTo(a - 7, c - 9); ctx.lineTo(a + 9, c); ctx.lineTo(a - 7, c + 9); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.font = "bold 11px Segoe UI"; ctx.fillStyle = "#9fe0a8"; ctx.fillText("START", a + 12, c + 4); }
+  if (d.portal) {       // the way into the instance, while you're in the open-world mine
+    const [a, c] = P(d.portal[0], d.portal[1]);
+    ctx.strokeStyle = "#c77dff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(a, c, 9, 0, 7); ctx.stroke();
+    ctx.fillStyle = "#e2c6ff"; ctx.font = "bold 11px Segoe UI"; ctx.fillText("PORTAL", a + 13, c + 4);
+  }
+  if (d.me) {
+    const [a, b] = P(d.me[0], d.me[1]);
+    // (yards is only set for a pull in your half: never a line across the portal)
+    if (d.next_pull && d.next_pull.pos && d.next_pull.yards != null) { const [x2, y2] = P(d.next_pull.pos[0], d.next_pull.pos[1]);
+      ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 8, 0, 7); ctx.fill(); ctx.stroke();
+  }
+  $("mapNote").textContent = g ? "· guide in grey (numbered pulls, ✓ done), you in gold, dashed line to the next pull" : "· recording your route";
+}
+
+$("map").addEventListener("mousemove", e => {
+  const r = $("map").getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, tip = $("tip");
+  const h = hits.filter(k => Math.hypot(k.x - x, k.y - y) <= k.r)[0];
+  if (!h) { tip.hidden = true; return; }
+  const f = h.f;
+  tip.innerHTML = `<b>${f.boss ? esc(f.boss) + " (boss)" : `Pull #${f.n}`}</b> ${f.done ? "✓" : ""}<br>${mobsTxt(f.mobs)}<br>
+    <span class="dim">last time ${dur(f.dur)} · taken ${fmt(f.taken)} · healed ${fmt(f.healed)}</span>${f.deaths.length ? `<br><span style="color:#e9563f">✝ ${esc(f.deaths.join(", "))}</span>` : ""}`;
+  tip.hidden = false;
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px";
+  tip.style.top = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8) + "px";
+});
+$("map").addEventListener("mouseleave", () => { $("tip").hidden = true; });
+
+function render(d){
+  if (!d.inside) {
+    $("dname").textContent = "Dungeon"; $("live").textContent = "not in a dungeon"; $("live").className = "pill";
+    $("runs").innerHTML = ""; ["bossPill", "deathPill", "etaPill"].forEach(k => $(k).textContent = "—");
+    if ($("pctBar")) $("pctBar").style.width = "0"; if ($("pctTxt")) $("pctTxt").textContent = "—";
+    $("live").style.background = ""; if ($("logsWarn")) $("logsWarn").hidden = true;
+    $("grid").innerHTML = `<div class="out" style="grid-column:1/-1;grid-row:1/-1">Walk into a dungeon and this screen goes live:<br>
+      next pull, next boss, pulls and mobs left, your group, and pace against your best run.<br>
+      <a href="/instance" style="color:#a8843a">Look back at past runs →</a></div>`;
+    return;
+  }
+  // one broken card must not freeze the rest of the page on stale data
+  try { logsBanner(d); } catch (e) {}
+  for (const f of [renderTop, renderRuns, renderNext, renderGroup, renderPace, renderLoot, drawMap]) {
+    try { f(d); } catch (e) { console.error(f.name, e); $("live").textContent += " · ⚠ " + f.name + " failed"; }
+  }
+}
+
+async function tick(){
+  try {
+    D = await (await fetch("/api/dungeon" + (guide ? "?guide=" + guide : ""), {cache: "no-store"})).json();
+    if (!D.inside && !$("grid").querySelector(".out") && document.querySelector(".map")) { render(D); return; }
+    if (D.inside && !document.querySelector(".map")) { location.reload(); return; }
+    render(D);
+  } catch (e) { $("live").textContent = "companion not running"; }
+}
+tick(); setInterval(tick, 1500);
+addEventListener("resize", () => D && D.inside && drawMap(D));
+</script>
+</body>
+</html>

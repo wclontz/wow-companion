@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bagem's Second Screen</title>
+<style>
+:root{
+  --bg:#0d0b09; --panel:#17130f; --panel2:#1f1a14; --line:#3a2f22;
+  --gold:#e8c26a; --gold2:#b8913f; --text:#e9e1d3; --dim:#9a8f7e;
+  --hp:#3fbf4f; --hpbg:#173a1b; --mana:#3f7fe8; --manabg:#16264a;
+  --red:#e0523f; --xp:#a24fe0; --xpbg:#2a1840; --rest:#4fb3e0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.35 "Segoe UI",system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;padding:10px 16px;border-bottom:1px solid var(--line);background:linear-gradient(#1c160f,#110e0a)}
+header h1{margin:0;font-size:22px;color:var(--gold);font-family:Georgia,serif;letter-spacing:.5px}
+.pill{padding:2px 9px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);color:var(--dim);font-size:13px}
+.pill.warn{color:#ffd27a;border-color:#7a5a20}
+.pill.bad{color:#fff;background:#7a1e14;border-color:var(--red);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.55}}
+main{display:grid;gap:12px;padding:12px 16px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0}
+.card h2{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--gold2)}
+.wide{grid-column:1/-1}
+.span2{grid-column:span 2}
+@media (max-width:800px){.span2{grid-column:auto}}
+.big{font-size:34px;font-weight:600;color:var(--gold);line-height:1.1}
+.sub{color:var(--dim);font-size:13px}
+.bar{position:relative;height:20px;border-radius:4px;overflow:hidden;background:#222;margin:6px 0}
+.bar>i{position:absolute;left:0;top:0;bottom:0;transition:width .4s}
+.bar>span{position:absolute;inset:0;text-align:center;font-size:12px;line-height:20px;text-shadow:0 1px 2px #000}
+.bar.hp{background:var(--hpbg)} .bar.hp>i{background:var(--hp)}
+.bar.mana{background:var(--manabg)} .bar.mana>i{background:var(--mana)}
+.bar.xp{background:var(--xpbg);height:26px} .bar.xp>i{background:linear-gradient(90deg,#7a2fc0,var(--xp))} .bar.xp>span{line-height:26px;font-size:14px}
+.bar.mob{background:#3a1712} .bar.mob>i{background:var(--red)}
+.headline{font-size:20px;margin:6px 0 2px} .headline b{color:var(--gold)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:8px}
+.stat{background:var(--panel2);border-radius:6px;padding:6px 8px}
+.stat .v{font-size:20px;font-weight:600} .stat .k{font-size:12px;color:var(--dim)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{color:var(--dim);font-weight:500;text-align:right;padding:3px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{text-align:right;padding:3px 6px;border-bottom:1px solid #241d15;white-space:nowrap}
+th:first-child,td:first-child{text-align:left;white-space:normal}
+tr.hl td{background:#2a2114}
+.split{display:flex;height:22px;border-radius:4px;overflow:hidden;margin:6px 0}
+.split>div{height:100%}
+.legend{display:flex;gap:14px;font-size:12.5px;color:var(--dim);flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+canvas{width:100%;display:block;background:#100d0a;border-radius:6px}
+.feed{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto;font-size:13.5px}
+.feed li{padding:4px 2px;border-bottom:1px solid #241d15}
+.feed time{color:var(--dim);margin-right:8px;font-variant-numeric:tabular-nums}
+.feed .death{color:var(--red)} .feed .level{color:var(--xp);font-weight:600} .feed .record{color:var(--gold)} .feed .hostile{color:#ff8a6a}
+form.base{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+form.base input{width:90px;padding:5px 7px;background:#0f0c09;border:1px solid var(--line);color:var(--text);border-radius:4px}
+form.base button{padding:5px 12px;background:var(--gold2);border:0;border-radius:4px;color:#1a1208;font-weight:600;cursor:pointer}
+.muted{color:var(--dim);font-size:12.5px}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.num{font-variant-numeric:tabular-nums}
+a.small{color:var(--dim);font-size:12px;cursor:pointer;text-decoration:underline}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="who">Waiting for the combat log…</h1>
+  <span class="pill" id="zone">—</span>
+  <span class="pill" id="session">—</span>
+  <span class="pill" id="lag" title="How far behind real time the newest logged event is. The game writes the log in chunks.">—</span>
+  <span class="pill bad" id="hostile" hidden></span>
+  <span class="pill" id="lanTag" hidden title="Open this address in a browser on a tablet or phone on the same network (Wi-Fi)"></span>
+  <span class="pill" id="auras" hidden></span>
+  <a class="pill" href="/hud" style="margin-left:auto;color:var(--gold);text-decoration:none">HUD view →</a>
+</header>
+
+<main>
+  <!-- XP -->
+  <section class="card span2">
+    <h2>Experience</h2>
+    <div id="xpBox"></div>
+    <form class="base" id="baseForm">
+      <span class="muted" id="baseHint">Tell it where you are now:</span>
+      <label class="muted">Level <input type="number" id="bLevel" min="1" max="60"></label>
+      <label class="muted">Current XP <input type="number" id="bXp" min="0"></label>
+      <button>Set</button>
+    </form>
+  </section>
+
+  <!-- Current target -->
+  <section class="card">
+    <h2>Last fight: you vs. them</h2>
+    <div id="vsBox" class="sub">No fight yet.</div>
+  </section>
+
+  <!-- Mobs -->
+  <section class="card wide">
+    <h2>Mobs: what each one takes and gives</h2>
+    <div id="mobBox" class="sub">Kill something.</div>
+  </section>
+
+  <!-- Time -->
+  <section class="card">
+    <h2>Where the time goes</h2>
+    <div id="timeBox"></div>
+  </section>
+
+  <!-- Healing -->
+  <section class="card">
+    <h2>Bagem's healing report</h2>
+    <div id="healBox"></div>
+  </section>
+
+  <!-- Records -->
+  <section class="card">
+    <h2>Records</h2>
+    <div id="recBox"></div>
+  </section>
+
+  <!-- Spells -->
+  <section class="card span2">
+    <h2>Spells and mana efficiency</h2>
+    <div id="spellBox" class="sub">Cast something.</div>
+  </section>
+
+  <!-- Feed -->
+  <section class="card">
+    <h2>Ticker</h2>
+    <ul class="feed" id="feed"></ul>
+  </section>
+
+  <!-- Map -->
+  <section class="card span2">
+    <h2>Where you've been <span class="muted" id="mapInfo"></span></h2>
+    <canvas id="map" height="320"></canvas>
+    <div class="legend"><span><i style="background:var(--gold)"></i>you</span><span><i style="background:var(--red)"></i>kills</span><span><i style="background:#fff"></i>deaths</span></div>
+  </section>
+
+  <!-- HP/Mana timeline -->
+  <section class="card">
+    <h2>Health and mana</h2>
+    <canvas id="tl" height="160"></canvas>
+    <div class="legend"><span><i style="background:var(--hp)"></i>health</span><span><i style="background:var(--mana)"></i>mana</span></div>
+  </section>
+
+  <!-- Fights -->
+  <section class="card span2">
+    <h2>Recent fights</h2>
+    <div id="fightBox" class="sub">No fights yet.</div>
+  </section>
+
+  <!-- Around you -->
+  <section class="card">
+    <h2>Around you</h2>
+    <div id="aroundBox"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = n => n == null ? "—" : Math.round(n).toLocaleString();
+const pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
+function dur(s){ if (s == null || !isFinite(s)) return "—"; s = Math.round(s);
+  const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+  return h ? `${h}h ${m}m` : m ? `${m}m ${x}s` : `${x}s`; }
+const clock = t => new Date(t*1000).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+function money(c){ c = Math.round(c||0); const g = Math.floor(c/10000), s = Math.floor(c%10000/100), cp = c%100;
+  return (g?`${g}g `:"") + (g||s?`${s}s `:"") + `${cp}c`; }
+function bar(cls, v, max, label){ const w = max ? Math.max(0, Math.min(100, v/max*100)) : 0;
+  return `<div class="bar ${cls}"><i style="width:${w}%"></i><span>${label ?? `${fmt(v)} / ${fmt(max)}`}</span></div>`; }
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : (w.endsWith("s") ? "" : "s")}`;
+
+let S = null;
+
+$("baseForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const level = +$("bLevel").value, xp = +$("bXp").value || 0;
+  if (!level) return;
+  await fetch("/api/baseline", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({level, xp})});
+  tick();
+});
+
+function renderHeader(s){
+  $("who").textContent = s.me ? `${s.me}` : "Waiting for the combat log…";
+  $("zone").textContent = s.zone || "—";
+  $("session").textContent = s.first_t ? `session ${dur(s.time.active)} · ${fmt(s.lines)} lines` : "no log yet";
+  const lag = $("lag");
+  if (s.lag == null) { lag.textContent = "no data"; lag.className = "pill"; }
+  else if (s.lag > 600) { lag.textContent = `no new log lines for ${dur(s.lag)} · type /combatlog in game`; lag.className = "pill warn"; }
+  else { lag.textContent = `log ${dur(s.lag)} behind`; lag.className = "pill" + (s.lag > 180 ? " warn" : ""); }
+  const h = $("hostile");
+  h.hidden = !s.hostiles.length;
+  h.textContent = s.hostiles.length ? `⚔ Hostile nearby: ${s.hostiles.join(", ")}` : "";
+  const a = $("auras");
+  const shown = s.auras.filter(x => /rest|camp|drink|food|well fed/i.test(x));
+  a.hidden = !shown.length; a.textContent = shown.join(" · ");
+}
+
+function renderXp(s){
+  const x = s.xp, box = $("xpBox");
+  $("baseHint").textContent = x ? "Correct it any time:" : "Tell it where you are now (level, and XP from the XP bar tooltip):";
+  if (!x) {
+    box.innerHTML = `<div class="sub">The combat log doesn't record XP, so give it a starting point below. After that it counts every kill
+      ${s.chat_active ? "using the real XP numbers from your chat log." : "with the Classic XP formula (type <b>/chatlog</b> in game for exact numbers)."}</div>`;
+    return;
+  }
+  const left = x.need - x.xp;
+  const row = s.last_kill_row;
+  let headline = "";
+  if (row && row.to_level) headline = `<div class="headline"><b>${fmt(row.to_level)}</b> more ${esc(row.name)}${row.to_level===1?"":"s"} to level ${x.level+1}</div>`;
+  box.innerHTML = `
+    <div style="display:flex;gap:18px;align-items:baseline;flex-wrap:wrap">
+      <div class="big">Level ${x.level}</div>
+      <div class="sub">${x.exact ? "exact (chat log)" : "estimated (Classic formula, no chat log)"}</div>
+    </div>
+    ${bar("xp", x.xp, x.need, `${fmt(x.xp)} / ${fmt(x.need)} XP · ${pct(x.xp, x.need)} · ${fmt(left)} to go`)}
+    ${headline}
+    <div class="stats">
+      <div class="stat"><div class="v">${fmt(s.xp_rate)}</div><div class="k">XP per hour</div></div>
+      <div class="stat"><div class="v">${dur(s.eta_secs)}</div><div class="k">to level at this pace</div></div>
+      <div class="stat"><div class="v">${fmt(x.gained)}</div><div class="k">XP since you set it</div></div>
+      <div class="stat"><div class="v">${fmt(s.kills)}</div><div class="k">kills this session</div></div>
+      <div class="stat"><div class="v">${fmt(s.kills_per_hour)}</div><div class="k">kills per hour</div></div>
+    </div>`;
+  if (document.activeElement !== $("bLevel") && document.activeElement !== $("bXp") && !$("bLevel").value) {
+    $("bLevel").value = x.level; $("bXp").value = x.xp;
+  }
+}
+
+function renderVs(s){
+  const t = s.target, p = s.player, box = $("vsBox");
+  const row = t || s.last_kill_row;
+  if (!row) { box.innerHTML = `<span class="sub">No fight yet.</span>`; return; }
+  const name = esc(row.name);
+  const mobPart = t && t.maxhp
+    ? `${bar("mob", t.hp, t.maxhp)}
+       <div class="headline">${t.hits_left != null ? `<b>${t.hits_left}</b> more ${esc(t.best_spell)}${t.hits_left===1?"":"s"} to finish it` : "—"}</div>`
+    : `<div class="headline">${row.hits_to_kill != null ? `<b>${row.hits_to_kill}</b> ${esc(row.best_spell)}s to kill one from full` : "—"}</div>`;
+  const youPart = `${bar("hp", p.hp, p.maxhp)}
+       ${p.maxpower ? bar("mana", p.power, p.maxpower) : ""}
+       <div class="headline">${row.hits_left_now != null ? `You can take <b>${row.hits_left_now}</b> more of its hits` : "—"}</div>`;
+  box.innerHTML = `
+    <div class="vs">
+      <div><div class="sub">${name}${t && t.level ? ` · level ${t.level}` : ""}${row.mob_hp ? ` · ${fmt(row.mob_hp)} HP` : ""}</div>${mobPart}
+        <div class="muted">${row.best_avg ? `${esc(row.best_spell)} averages ${fmt(row.best_avg)} on these` : ""}</div></div>
+      <div><div class="sub">You${p.absorb ? ` · shield ${fmt(p.absorb)}` : ""}</div>${youPart}
+        <div class="muted">${row.their_avg ? `it hits you for ${row.their_avg} on average · ${row.hits_to_die} hits from full` : ""}</div></div>
+    </div>
+    <div class="muted" style="margin-top:6px">From the log, so as fresh as the log is (see the "behind" pill at the top).</div>`;
+}
+
+function renderMobs(s){
+  if (!s.mobs.length) { $("mobBox").innerHTML = `<span class="sub">Kill something.</span>`; return; }
+  const best = s.mobs.filter(m => m.xp_per_min).sort((a,b) => b.xp_per_min - a.xp_per_min)[0];
+  const lastName = s.last_kill && s.last_kill.name;
+  $("mobBox").innerHTML = `
+    ${best ? `<div class="headline">Best XP for your time: <b>${esc(best.name)}</b> · ${fmt(best.xp_per_min)} XP per minute of fighting</div>` : ""}
+    <table><thead><tr>
+      <th>Mob</th><th>Lvl</th><th>Killed</th><th>HP</th><th>Hits to kill</th><th>Its hit</th><th>Hits you can take</th>
+      <th>Fight time</th><th>XP each</th><th>XP/min</th><th>Kills to level</th>
+    </tr></thead><tbody>
+    ${s.mobs.map(m => `<tr class="${m.name===lastName?"hl":""}">
+      <td>${esc(m.name)}</td><td>${esc(m.levels)}</td><td>${fmt(m.kills)}</td><td>${fmt(m.mob_hp)}</td>
+      <td>${m.hits_to_kill != null ? `${m.hits_to_kill} <span class="muted">${esc(m.best_spell)}</span>` : "—"}</td>
+      <td>${m.their_avg ?? "—"}</td><td>${m.hits_to_die ?? "—"}</td>
+      <td>${m.avg_secs != null ? m.avg_secs + "s" : "—"}</td><td>${fmt(m.avg_xp)}</td><td>${fmt(m.xp_per_min)}</td>
+      <td>${m.to_level != null ? `<b>${fmt(m.to_level)}</b>` : "—"}</td></tr>`).join("")}
+    </tbody></table>
+    <div class="muted" style="margin-top:6px">"Hits to kill" uses your most-used direct damage spell on that mob (DoT ticks not included). "Hits you can take" is from full health.</div>`;
+}
+
+function renderTime(s){
+  const t = s.time, tot = Math.max(1, t.active);
+  const seg = (v, c) => `<div style="width:${v/tot*100}%;background:${c}"></div>`;
+  $("timeBox").innerHTML = `
+    <div class="split">${seg(t.combat,"var(--red)")}${seg(t.rest,"var(--rest)")}${seg(t.idle,"#5a4d3a")}</div>
+    <div class="legend">
+      <span><i style="background:var(--red)"></i>fighting ${dur(t.combat)} (${pct(t.combat,tot)})</span>
+      <span><i style="background:var(--rest)"></i>eating/drinking ${dur(t.rest)} (${pct(t.rest,tot)})</span>
+      <span><i style="background:#5a4d3a"></i>running around ${dur(t.idle)} (${pct(t.idle,tot)})</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="v">${s.avg_fight ? s.avg_fight.toFixed(1)+"s" : "—"}</div><div class="k">average fight</div></div>
+      <div class="stat"><div class="v">${s.mana_per_kill != null ? fmt(s.mana_per_kill) : "—"}</div><div class="k">mana per kill</div></div>
+      <div class="stat"><div class="v">${s.kills_per_rest != null ? s.kills_per_rest.toFixed(1) : "—"}</div><div class="k">kills per drink</div></div>
+      <div class="stat"><div class="v">${s.player.maxpower && s.mana_per_kill ? Math.floor(s.player.maxpower / s.mana_per_kill) : "—"}</div><div class="k">kills per full mana bar</div></div>
+      <div class="stat"><div class="v">${fmt(s.distance)}</div><div class="k">yards traveled</div></div>
+    </div>`;
+}
+
+function renderHeal(s){
+  const over = s.heal_done ? s.overheal / s.heal_done : 0;
+  const verdict = !s.heal_done ? "No heals yet." :
+    over > .6 ? "Mostly healing people who were already fine. Very on brand." :
+    over > .35 ? "A healthy amount of wasted healing." :
+    over > .15 ? "Respectable. Suspiciously competent." : "Barely any waste. Who are you?";
+  $("healBox").innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="v">${fmt(s.heal_done - s.overheal)}</div><div class="k">healing that landed</div></div>
+      <div class="stat"><div class="v" style="color:${over>.5?"var(--red)":"inherit"}">${s.heal_done ? Math.round(over*100)+"%" : "—"}</div><div class="k">overheal</div></div>
+      <div class="stat"><div class="v">${fmt(s.shield_absorbed)}</div><div class="k">absorbed by your shields</div></div>
+      <div class="stat"><div class="v">${fmt(s.heal_taken)}</div><div class="k">healing you received</div></div>
+    </div>
+    <div class="sub" style="margin-top:8px">${verdict}</div>`;
+}
+
+function renderRecords(s){
+  const b = s.biggest_hit, t = s.biggest_taken, c = s.closest_call;
+  $("recBox").innerHTML = `
+    <table><tbody>
+      <tr><td>Biggest hit</td><td>${b ? `<b>${fmt(b.amt)}</b> ${esc(b.spell)}${b.crit?" (crit)":""} on ${esc(b.target)}` : "—"}</td></tr>
+      <tr><td>Hardest hit taken</td><td>${t ? `<b>${fmt(t.amt)}</b> from ${esc(t.src)}` : "—"}</td></tr>
+      <tr><td>Closest call</td><td>${c ? `<b>${fmt(c.hp)}</b> / ${fmt(c.maxhp)} HP${c.by ? ` (${esc(c.by)})` : ""}` : "—"}</td></tr>
+      <tr><td>Deaths</td><td>${fmt(s.deaths)}</td></tr>
+      <tr><td>Mobs someone else tagged first</td><td>${fmt(s.stolen)}</td></tr>
+    </tbody></table>
+    ${s.taken_by.length ? `<div class="sub" style="margin-top:10px">What hurts you most</div>
+      <table><tbody>${s.taken_by.slice(0,5).map(r => `<tr><td>${esc(r.name)}</td><td>${fmt(r.dmg)} <span class="muted">in ${r.hits} hits</span></td></tr>`).join("")}</tbody></table>` : ""}
+    ${s.failed.length ? `<div class="sub" style="margin-top:10px">Fumbles</div>
+      <table><tbody>${s.failed.map(r => `<tr><td>${esc(r.what)}</td><td>${r.n}×</td></tr>`).join("")}</tbody></table>` : ""}`;
+}
+
+function renderSpells(s){
+  if (!s.spells.length) { $("spellBox").innerHTML = `<span class="sub">Cast something.</span>`; return; }
+  const best = s.spells.filter(r => r.per_mana).sort((a,b) => b.per_mana - a.per_mana)[0];
+  $("spellBox").innerHTML = `
+    ${best ? `<div class="headline">Most bang per mana: <b>${esc(best.name)}</b> · ${best.per_mana} per mana point</div>` : ""}
+    <table><thead><tr><th>Spell</th><th>Casts</th><th>Damage</th><th>Healing landed</th><th>Overheal</th><th>Crits</th><th>Biggest</th><th>Mana spent</th><th>Per mana</th></tr></thead>
+    <tbody>${s.spells.map(r => `<tr>
+      <td>${esc(r.name)}</td><td>${fmt(r.casts)}</td><td>${r.dmg ? fmt(r.dmg) : "—"}</td>
+      <td>${r.heal ? fmt(r.eff_heal) : "—"}</td><td>${r.heal ? pct(r.over, r.heal) : "—"}</td>
+      <td>${r.hits ? pct(r.crits, r.hits) : "—"}</td><td>${r.max ? fmt(r.max) : "—"}</td>
+      <td>${r.mana ? fmt(r.mana) : "—"}</td><td>${r.per_mana ?? "—"}</td></tr>`).join("")}</tbody></table>`;
+}
+
+function renderFeed(s){
+  $("feed").innerHTML = s.feed.length ? s.feed.map(f => `<li class="${f.kind}"><time>${clock(f.t)}</time>${esc(f.text)}</li>`).join("")
+    : `<li class="sub">Nothing yet.</li>`;
+}
+
+function renderFights(s){
+  if (!s.fights.length) { $("fightBox").innerHTML = `<span class="sub">No fights yet.</span>`; return; }
+  $("fightBox").innerHTML = `<table><thead><tr><th>When</th><th>Against</th><th>Length</th><th>Kills</th><th>Dealt</th><th>Taken</th><th>Healed</th><th>Mana used</th><th>Lowest HP</th></tr></thead>
+    <tbody>${s.fights.map(f => `<tr>
+      <td>${clock(f.start)}</td><td>${esc(f.mobs.join(", "))}</td><td>${f.dur}s</td><td>${f.kills}</td>
+      <td>${fmt(f.dealt)}</td><td>${fmt(f.taken)}</td><td>${fmt(f.healed)}</td><td>${f.mana != null ? fmt(f.mana) : "—"}</td>
+      <td style="color:${f.min_hp<30?"var(--red)":"inherit"}">${f.min_hp}%</td></tr>`).join("")}</tbody></table>`;
+}
+
+function renderAround(s){
+  $("aroundBox").innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="v">${s.players_nearby.length}</div><div class="k">players nearby (last 2 min)</div></div>
+      <div class="stat"><div class="v">${fmt(s.players_total)}</div><div class="k">players seen this session</div></div>
+      ${s.chat_active || s.copper ? `<div class="stat"><div class="v">${money(s.copper)}</div><div class="k">looted (${money(s.copper_per_hour)}/hr)</div></div>` : ""}
+    </div>
+    ${s.hostiles.length ? `<div class="headline" style="color:var(--red)">Hostile: ${esc(s.hostiles.join(", "))}</div>` : ""}
+    ${s.loot.length ? `<div class="sub" style="margin-top:10px">Loot</div><table><tbody>${s.loot.map(l => `<tr><td>${esc(l.item)}</td><td>${l.n}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="muted" style="margin-top:8px">${s.chat_active ? "" : "Type /chatlog in game to also track loot, gold and exact XP."}</div>`}`;
+}
+
+function sizeCanvas(cv){
+  const r = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight || +cv.getAttribute("height") || 160;
+  if (cv.width !== Math.round(w*r) || cv.height !== Math.round(h*r)) { cv.width = Math.round(w*r); cv.height = Math.round(h*r); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(r,0,0,r,0,0); return [ctx, w, h];
+}
+
+function renderMap(s){
+  const [ctx, w, h] = sizeCanvas($("map"));
+  ctx.clearRect(0,0,w,h);
+  const pts = s.trail;
+  if (!pts.length) { ctx.fillStyle = "#6a5f50"; ctx.fillText("No movement logged yet.", 12, 22); return; }
+  // WoW world coords: +x is north, +y is west -> screen x = -y, screen y = -x
+  // only what's near where you are now: after a dungeon or a flight the old points are thousands of yards
+  // away (other numbers altogether inside an instance) and squeezed everything into two corners
+  const lp = pts[pts.length - 1], nearMe = q => !lp || Math.hypot(q[0] - lp[1], q[1] - lp[2]) < 2000;
+  const all = pts.map(p => [p[1], p[2]]).concat(s.kill_marks.map(k => [k[0], k[1]]), s.death_marks).filter(nearMe);
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of all) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+  const spanX = Math.max(40, maxX - minX), spanY = Math.max(40, maxY - minY);
+  const sc = Math.min((w - 30) / spanY, (h - 30) / spanX);
+  const cx = (minY + maxY) / 2, cy = (minX + maxX) / 2;
+  const P = (x, y) => [w/2 - (y - cx) * sc, h/2 - (x - cy) * sc];
+  ctx.strokeStyle = "rgba(232,194,106,.45)"; ctx.lineWidth = 1.5; ctx.beginPath();
+  pts.forEach((p, i) => { const [a, b] = P(p[1], p[2]); i && Math.hypot(p[1] - pts[i - 1][1], p[2] - pts[i - 1][2]) < 200 ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke();
+  ctx.fillStyle = "rgba(224,82,63,.85)";
+  for (const k of s.kill_marks) { const [a, b] = P(k[0], k[1]); ctx.beginPath(); ctx.arc(a, b, 3.5, 0, 7); ctx.fill(); }
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+  for (const d of s.death_marks) { const [a, b] = P(d[0], d[1]); ctx.beginPath(); ctx.moveTo(a-5,b-5); ctx.lineTo(a+5,b+5); ctx.moveTo(a+5,b-5); ctx.lineTo(a-5,b+5); ctx.stroke(); }
+  const last = pts[pts.length-1], [a, b] = P(last[1], last[2]);
+  ctx.fillStyle = "#e8c26a"; ctx.beginPath(); ctx.arc(a, b, 6, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5; ctx.stroke();
+  // 50-yard scale bar
+  const yd = 50 * sc; ctx.strokeStyle = "#9a8f7e"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(12, h-12); ctx.lineTo(12+yd, h-12); ctx.stroke();
+  ctx.fillStyle = "#9a8f7e"; ctx.font = "11px Segoe UI"; ctx.fillText("50 yd", 14, h-17);
+  $("mapInfo").textContent = `· ${s.kill_marks.length} kills · ${fmt(s.distance)} yd`;
+}
+
+function renderTimeline(s){
+  const [ctx, w, h] = sizeCanvas($("tl"));
+  ctx.clearRect(0,0,w,h);
+  const tl = s.timeline; if (tl.length < 2) return;
+  const t0 = tl[0][0], t1 = tl[tl.length-1][0], X = t => (t - t0) / Math.max(1, t1 - t0) * (w - 8) + 4, Y = v => h - 6 - v * (h - 12);
+  for (const [i, col] of [[2, "#3f7fe8"], [1, "#3fbf4f"]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.beginPath(); let started = false;
+    for (const p of tl) { if (p[i] == null) continue; const x = X(p[0]), y = Y(p[i]); started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true; }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(224,82,63,.4)"; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(0, Y(.3)); ctx.lineTo(w, Y(.3)); ctx.stroke(); ctx.setLineDash([]);
+}
+
+async function tick(){
+  try {
+    const r = await fetch("/api/state", {cache:"no-store"});
+    S = await r.json();
+  } catch (e) {
+    $("lag").textContent = "companion not running"; $("lag").className = "pill warn";
+    return;
+  }
+  { const u = S.local && S.lan && S.lan[0], lt = $("lanTag");
+    if (lt){ lt.hidden = !u; if (u) lt.textContent = "tablet: " + u.replace("http://", ""); } }
+  // each card by itself: one that fails is named in the header pill and the others still draw
+  const failed = [];
+  for (const f of [renderHeader, renderXp, renderVs, renderMobs, renderTime, renderHeal, renderRecords, renderSpells,
+                   renderFeed, renderFights, renderAround, renderMap, renderTimeline]) {
+    try { f(S); } catch (e) { console.error(f.name, e); failed.push(f.name.replace(/^render/, "")); }
+  }
+  if (failed.length) { $("lag").textContent = `⚠ not drawn: ${failed.join(", ")}`; $("lag").className = "pill warn"; }
+}
+tick(); setInterval(tick, 1500);
+addEventListener("resize", () => S && (renderMap(S), renderTimeline(S)));
+</script>
+</body>
+</html>

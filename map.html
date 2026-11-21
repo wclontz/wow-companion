@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minimap Maps</title>
+<style>
+:root{--bg:#0e0b08;--card:#17120d;--line:#3a2f22;--gold:#f0c968;--gold2:#a8843a;--txt:#d8cfc0;--dim:#8f8473}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:14px "Segoe UI",system-ui,sans-serif;overflow:hidden}
+.top{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);background:#120e0a;flex-wrap:wrap}
+.top .name{font:600 20px Georgia,serif;color:var(--gold)}
+.top a{color:var(--gold2);text-decoration:none;margin-left:6px}
+select,button{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:inherit;cursor:pointer}
+button.on{border-color:var(--gold);color:var(--gold)}
+.dim{color:var(--dim)}
+#wrap{position:absolute;top:50px;left:0;right:0;bottom:0}
+#cv{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+#cv:active{cursor:grabbing}
+#info{position:absolute;left:12px;bottom:10px;background:#0f0c09e0;border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:12.5px;line-height:1.5;max-width:min(420px,calc(100% - 80px))}
+#empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:16px;text-align:center;padding:20px}
+.legend span{display:inline-block;margin-right:10px}
+#zoom{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:6px;align-items:stretch}
+#zoom button{width:44px;height:44px;padding:0;font-size:22px;line-height:1;background:#0f0c09e0;user-select:none}
+#zoom #zpct{font-size:12px;height:26px}
+@media (max-width:640px){#wrap{top:92px}}
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="name">Maps</span>
+  <select id="pick"></select>
+  <button id="follow" class="on" title="Keep your dot in the middle">● Follow me</button>
+  <button id="fit" title="Show the whole map">⤢ Whole map</button>
+  <span id="floors"></span>
+  <span class="dim" id="sub"></span>
+  <button id="sharebtn" title="Back up, restore, export or import maps">💾 Backups &amp; sharing</button>
+  <span style="margin-left:auto"><a href="/hud">HUD</a> <a href="/dungeon">live dungeon</a> <a href="/instance">look-back</a></span>
+</div>
+<div id="sharepanel" hidden style="position:absolute;top:56px;right:12px;z-index:5;width:min(440px,94vw);max-height:80vh;overflow:auto;background:#0f0c09f2;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button id="bk_close" title="Close" style="margin-left:auto;order:9">✕</button>
+    <button id="bk_now">Back up now</button>
+    <select id="exp_map"></select><button id="exp_go" title="Download a map package to share">⬇ Export</button>
+    <label style="cursor:pointer"><input type="file" id="imp_file" accept=".zip" hidden><span class="dim" style="border:1px solid var(--line);border-radius:6px;padding:5px 9px">⬆ Import map…</span></label>
+  </div>
+  <div id="share_msg" class="dim" style="margin:8px 0"></div>
+  <div style="font-weight:600;color:var(--gold);margin:6px 0">Backups</div>
+  <div id="bk_list" class="dim">…</div>
+</div>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="empty" hidden></div>
+  <div id="info" hidden></div>
+  <div id="zoom">
+    <button id="zin" title="Zoom in (+)">+</button>
+    <button id="zpct" title="Zoom: click for the whole map (0)">—</button>
+    <button id="zout" title="Zoom out (−)">−</button>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let D = null, chosen = new URLSearchParams(location.search).get("place");
+let follow = true, view = null;          // view: {cx, cy (image px at screen centre), z (screen px per image px)}
+let img = null, imgSrc = null, pickFloor = null;
+let dirty = true;
+
+function uv(d, p){ return d.info.unit === "coords" ? [p[0], p[1]] : [-p[1], -p[0]]; }     // world: x north, y west
+function toImg(d, p){ const [u, v] = uv(d, p); return [(d.info.kx || d.info.k) * u - d.info.origin[0], (d.info.ky || d.info.k) * v - d.info.origin[1]]; }
+
+const nbImgs = {};
+function fitView(d){
+  const cv = $("cv"), w = cv.clientWidth, h = cv.clientHeight, s = d.info.size;
+  if (d.info.bbox) { const [u0, v0, u1, v1] = d.info.bbox;     // the continent map: fit what's been mapped
+    view = {cx: (u0 + u1) / 2, cy: (v0 + v1) / 2, z: Math.min(w / (u1 - u0), h / (v1 - v0)) * 0.95}; return; }
+  view = s[0] ? {cx: s[0] / 2, cy: s[1] / 2, z: Math.min(w / s[0], h / s[1]) * 0.95} : {cx: 0, cy: 0, z: 1};
+}
+
+
+// map tiles: a tile's URL changes (?v=) every time it's redrawn. Keep drawing the version already loaded
+// until the new one has arrived - otherwise the whole tile (~800 yd) blinks out on every redraw.
+function tileImg(url, onload) {
+  window._tiles = window._tiles || {};
+  const key = url.split("?")[0], t = window._tiles[key] || (window._tiles[key] = {});
+  if (t.want !== url) {
+    t.want = url;
+    const im = new Image();
+    im.onload = () => { if (t.want === url) { t.shown = im; onload && onload(); } };
+    im.src = url;
+  }
+  return t.shown && t.shown.complete && t.shown.naturalWidth ? t.shown : null;
+}
+function draw(){
+  if (!dirty) return;
+  dirty = false;
+  const d = D, cv = $("cv"), r = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * r) || cv.height !== Math.round(h * r)) { cv.width = Math.round(w * r); cv.height = Math.round(h * r); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(r, 0, 0, r, 0, 0); ctx.clearRect(0, 0, w, h);
+  if (!d || !d.info) return;
+  if (!w || !h) { dirty = true; return; }             // (page not laid out yet / in a background tab: the view was fitted to a 0-size canvas and stayed at zoom 0)
+  if (view && !(view.z > 0)) view = null;
+  if (!view) { fitView(d); fitZ = view.z; const z = savedZoom(d.place); if (z && follow && d.me) view.z = z; }
+  showZoom();
+  if (follow && d.me) { const [a, b] = toImg(d, d.me); view.cx = a; view.cy = b; }
+  // (a map you're not standing on has no "you": draw it fitted - it used to stay blank until you dragged it)
+  const S = (ix, iy) => [w / 2 + (ix - view.cx) * view.z, h / 2 + (iy - view.cy) * view.z];
+  // seamless: the zones around this one, placed by their real world position, under this zone's map
+  (d.info.neighbors || []).forEach(n => {
+    nbImgs[n.url] = nbImgs[n.url] || Object.assign(new Image(), {onload: draw, src: n.url});
+    const nim = nbImgs[n.url]; if (!(nim.complete && nim.naturalWidth)) return;
+    const [a, b] = S(...toImg(d, [n.rect[0], n.rect[1]])), [c, e] = S(...toImg(d, [n.rect[2], n.rect[3]]));
+    ctx.drawImage(nim, a, b, c - a, e - b);
+  });
+  if (d.info.world) {                       // the continent map: tiles in image space
+    const fl = (d.info.floors || []).find(f => f.id === (pickFloor ?? d.info.floor));
+    const base = (d.info.floors || []).find(f => f.id === 0);
+    if (fl && fl.id !== 0 && base) {                        // a city level / floor: the outdoor map underneath, dimmed
+      ctx.globalAlpha = 0.45;
+      base.tiles.forEach(([u, v, url]) => {
+        const T = d.info.tile, [a, b] = S(u, v), s2 = T * view.z;
+        if (a > w || b > h || a + s2 < 0 || b + s2 < 0) return;
+        const ti = tileImg(url, draw); if (ti) ctx.drawImage(ti, a, b, s2, s2);
+      });
+      ctx.globalAlpha = 1;
+    }
+    ((fl && fl.tiles) || d.info.tiles || []).forEach(([u, v, url]) => {
+      const T = d.info.tile, [a, b] = S(u, v), s2 = T * view.z;
+      if (a > w || b > h || a + s2 < 0 || b + s2 < 0) return;
+      const ti = tileImg(url, draw); if (ti) { ctx.imageSmoothingEnabled = view.z < 2; ctx.imageSmoothingQuality = "high"; ctx.drawImage(ti, a, b, s2, s2); }
+    });
+  }
+  if (d.info.areas && d.info.px_per_unit) {   // named areas: borders + names
+    const K = d.info.px_per_unit;
+    ctx.save();
+    // (borders not drawn: the bubbles only place the names; names never overlap - biggest areas first)
+    ctx.font = "bold 13px Segoe UI"; ctx.textAlign = "center";
+    const boxes = [];
+    [...d.info.areas].sort((p, q) => q.squares - p.squares).forEach(a => {
+      const tw = ctx.measureText(a.name).width + 6;
+      for (const sp of [a.center, ...(a.spots || [])]) {
+        const [cx, cy] = S(K * sp[0], K * sp[1]);
+        const box = [cx - tw / 2, cy - 12, cx + tw / 2, cy + 4];
+        if (boxes.some(o => box[0] < o[2] && box[2] > o[0] && box[1] < o[3] && box[3] > o[1])) continue;
+        boxes.push(box);
+        ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.strokeText(a.name, cx, cy);
+        ctx.fillStyle = "#f3dfa2"; ctx.fillText(a.name, cx, cy);
+        return;
+      }
+    });
+    ctx.restore();
+  }
+  if (img && img.complete && img.naturalWidth) {
+    const [x0, y0] = S(0, 0);
+    ctx.imageSmoothingEnabled = view.z < 2;
+    ctx.drawImage(img, x0, y0, d.info.size[0] * view.z, d.info.size[1] * view.z);
+  }
+  const line = (pts, col, lw) => { if (!pts || pts.length < 2) return; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath();
+    pts.forEach((p, i) => { const [a, b] = S(...toImg(d, p));
+      const jump = i && d.info.unit === "world" && Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) > 40;
+      i && !jump ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); };
+  (d.routes || []).forEach(rt => line(rt, "rgba(255,240,200,.45)", 2));
+  line(d.cur_trail, "rgba(255,0,255,.95)", 3);
+  if (d.info.world && d.info.trail && d.info.px_per_unit) {     // the map's own trail (continuous across zones)
+    const K = d.info.px_per_unit;
+    ctx.strokeStyle = "rgba(255,0,255,.9)"; ctx.lineWidth = 2.5; ctx.beginPath();
+    let pen = false;
+    d.info.trail.forEach(p => {
+      if (!p) { pen = false; return; }
+      const [a, b] = S(K * p[0], K * p[1]);
+      pen ? ctx.lineTo(a, b) : ctx.moveTo(a, b); pen = true;
+    });
+    ctx.stroke();
+  }
+  if (!(d.info.world && d.info.trail)) line(d.trail, "rgba(255,0,255,.9)", 2.5);
+  (d.pulls || []).forEach(p => { const [a, b] = S(...toImg(d, p));
+    ctx.fillStyle = p[3] ? "#b06cff" : p[2] >= 3 ? "rgba(255,216,74,.9)" : "rgba(70,201,87,.9)"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(a, b, p[3] ? 8 : 4 + Math.min(p[2], 5), 0, 7); ctx.fill(); ctx.stroke(); });
+  ctx.font = "bold 13px Segoe UI";
+  (d.bosses || []).forEach(b => { const [a, c] = S(...toImg(d, b));
+    ctx.fillStyle = "#c77dff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(a, c - 10); ctx.lineTo(a + 10, c); ctx.lineTo(a, c + 10); ctx.lineTo(a - 10, c); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#e2c6ff"; ctx.fillText(b[2], a + 13, c + 4); });
+  if (d.me) {
+    const [a, b] = S(...toImg(d, d.me));
+    ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 8, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = "rgba(240,201,104,.5)"; ctx.beginPath(); ctx.arc(a, b, 14 + (Date.now() / 120 % 8), 0, 7); ctx.stroke();
+  }
+}
+
+function render(){
+  const d = D;
+  const pickHtml = (d.maps || []).map(m => `<option value="${esc(m.place)}" ${m.place === d.place ? "selected" : ""}>${esc(m.place)}${m.place === d.here ? "  (you're here)" : ""} · ${m.shots} shots${m.pinned ? "" : " · not lined up yet"}</option>`).join("");
+  if (document.activeElement !== $("pick") && $("pick")._h !== pickHtml) { $("pick").innerHTML = pickHtml; $("pick")._h = pickHtml; }
+  if (!d.maps || !d.maps.length) { $("empty").hidden = false; $("empty").innerHTML = "No maps yet.<br>Walk around with the companion running: the minimap gets stitched into a map of each zone and dungeon."; return; }
+  if (!d.info) { $("empty").hidden = false; $("empty").innerHTML = `${esc(d.place)}: not enough shots yet to line the map up.<br><span class="dim">It needs about 6 shots spread out a little.</span>`; $("info").hidden = true; return; }
+  $("empty").hidden = true;
+  // floors (stacked levels): your floor by default, or the one picked
+  const fl = d.info.floors || [];
+  if (pickFloor != null && !fl.some(f => f.id === pickFloor)) pickFloor = null;
+  $("floors").innerHTML = fl.length > 1 ? fl.map(f => `<button data-f="${f.id}" class="${(pickFloor ?? d.info.floor) === f.id ? "on" : ""}">${f.id === 0 ? "Outdoors" : f.id === 1 ? "City / indoors" : "Level " + f.id}${f.id === d.info.floor && d.place === d.here ? " ●" : ""}</button>`).join(" ") : "";
+  document.querySelectorAll("#floors button").forEach(b => b.onclick = () => { const f = +b.dataset.f; pickFloor = f === d.info.floor ? null : f; render(); });
+  const chosenFloor = fl.find(f => f.id === pickFloor);
+  const u = chosenFloor ? chosenFloor.url : d.info.url;
+  if (u !== imgSrc) { if (u) { const im = new Image(); im.onload = draw; im.src = u; img = im; } else img = null; imgSrc = u; }
+  const yd = d.info.unit === "world" ? `${Math.round(d.info.size[0] / d.info.k)} × ${Math.round(d.info.size[1] / d.info.k)} yd`
+    : `${Math.min(100, d.info.size[0] / (d.info.kx || d.info.k)).toFixed(0)}% × ${Math.min(100, d.info.size[1] / (d.info.ky || d.info.k)).toFixed(0)}% of the zone (incl. minimap range)`;
+  $("sub").textContent = `${d.info.snaps} shots · covers ${yd}`;
+  $("info").hidden = false;
+  $("info").innerHTML = `<b style="color:var(--gold)">${esc(d.place)}</b> · built from the minimap${d.info.unit === "world" ? ", lined up with your combat log" : ", placed by the coordinates under it"}<br>
+    <span class="legend">${d.me ? '<span style="color:var(--gold)">● you</span>' : ""}${d.trail || d.cur_trail ? '<span style="color:#ff00ff">— your path</span>' : ""}${(d.routes || []).length ? '<span style="color:#fff0c8">— past runs</span><span style="color:#46c957">● pulls</span><span style="color:#c77dff">◆ bosses</span>' : ""}</span>
+    <br><span class="dim">drag to look around (stops following) · wheel, pinch, + / − or double-click to zoom · ● Follow me to snap back</span>`;
+  dirty = true; draw();
+}
+
+async function tick(){
+  try {
+    const was = D && D.place;
+    D = await (await fetch("/api/maps" + (chosen ? "?place=" + encodeURIComponent(chosen) : ""), {cache: "no-store"})).json();
+    if (was !== D.place) { view = null; fitZ = null; }      // another map: fit it afresh (and take its own remembered zoom)
+    render();
+  } catch (e) { $("sub").textContent = "companion not running"; }
+}
+
+$("pick").onchange = e => { chosen = e.target.value; view = null; fitZ = null; follow = true; $("follow").classList.add("on"); tick(); };
+$("follow").onclick = () => { follow = !follow; $("follow").classList.toggle("on", follow); dirty = true; draw(); };
+$("fit").onclick = () => { follow = false; $("follow").classList.remove("on"); if (D && D.info) { fitView(D); fitZ = view.z; keepZoom(); } dirty = true; draw(); };
+// ---- zoom and pan: wheel, the + / − buttons, keys (+ − 0), double-click, and on a touch screen drag and pinch
+let fitZ = null;                         // the zoom that shows the whole map (the "100%" of the readout is your own zoom over this)
+const ZMIN = 0.005, ZMAX = 12;
+function savedZoom(place){ try { const z = parseFloat(localStorage.getItem("mapZoom:" + place)); return z > 0 ? Math.max(ZMIN, Math.min(ZMAX, z)) : null; } catch (_) { return null; } }
+function keepZoom(){ try { if (D && D.place && view) localStorage.setItem("mapZoom:" + D.place, view.z); } catch (_) {} }
+function showZoom(){ $("zpct").textContent = view && fitZ ? (view.z / fitZ >= 10 ? Math.round(view.z / fitZ) : (view.z / fitZ).toFixed(1)) + "×" : "—"; }
+function zoomBy(f, mx = 0, my = 0){      // mx, my: the screen point (from the canvas centre) that stays put
+  if (!view) return;
+  const z2 = Math.max(ZMIN, Math.min(ZMAX, view.z * f));
+  if (!follow) { view.cx += mx / view.z - mx / z2; view.cy += my / view.z - my / z2; }      // (following: you stay in the middle)
+  view.z = z2; keepZoom(); dirty = true; draw();
+}
+function unfollow(){ follow = false; $("follow").classList.remove("on"); }
+const cvEl = $("cv");
+const fromCentre = e => { const r = cvEl.getBoundingClientRect(); return [e.clientX - r.left - cvEl.clientWidth / 2, e.clientY - r.top - cvEl.clientHeight / 2]; };
+const touches = new Map();               // pointer id -> its last event (one = drag, two = pinch)
+let drag = null, pinch = null;
+cvEl.addEventListener("pointerdown", e => {
+  cvEl.setPointerCapture(e.pointerId); touches.set(e.pointerId, e);
+  if (touches.size === 1) drag = {x: e.clientX, y: e.clientY, cx: view && view.cx, cy: view && view.cy, moved: false};
+  else { drag = null; pinch = null; }    // a second finger: the next move starts the pinch
+});
+cvEl.addEventListener("pointermove", e => {
+  if (!touches.has(e.pointerId) || !view) return;
+  touches.set(e.pointerId, e);
+  if (touches.size >= 2) {
+    const [p, q] = [...touches.values()], dist = Math.hypot(p.clientX - q.clientX, p.clientY - q.clientY);
+    const mid = {clientX: (p.clientX + q.clientX) / 2, clientY: (p.clientY + q.clientY) / 2};
+    if (pinch && pinch.dist > 0 && dist > 0) {
+      if (!follow) { view.cx -= (mid.clientX - pinch.mid.clientX) / view.z; view.cy -= (mid.clientY - pinch.mid.clientY) / view.z; }
+      zoomBy(dist / pinch.dist, ...fromCentre(mid));
+    }
+    pinch = {dist, mid};
+    return;
+  }
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;       // (a tap or a click is not a drag)
+  drag.moved = true; unfollow();
+  view.cx = drag.cx - (e.clientX - drag.x) / view.z; view.cy = drag.cy - (e.clientY - drag.y) / view.z; dirty = true; draw();
+});
+const lift = e => {
+  touches.delete(e.pointerId); pinch = null;
+  const left = [...touches.values()][0];                 // one finger still down after a pinch: it carries on as a drag
+  drag = left && view ? {x: left.clientX, y: left.clientY, cx: view.cx, cy: view.cy, moved: true} : null;
+};
+cvEl.addEventListener("pointerup", lift); cvEl.addEventListener("pointercancel", lift);
+cvEl.addEventListener("wheel", e => {
+  e.preventDefault();
+  // a mouse wheel goes a step a notch; a touchpad (many small deltas, or a pinch = ctrl + wheel) goes smoothly
+  const fine = e.ctrlKey || Math.abs(e.deltaY) < 50;
+  zoomBy(fine ? Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.004)) : e.deltaY < 0 ? 1.2 : 1 / 1.2, ...fromCentre(e));
+}, {passive: false});
+cvEl.addEventListener("dblclick", e => zoomBy(e.shiftKey ? 1 / 1.6 : 1.6, ...fromCentre(e)));
+function hold(btn, f){                   // a button that keeps zooming while it is held
+  let t = null;
+  const stop = () => { clearInterval(t); t = null; };
+  btn.addEventListener("pointerdown", e => { e.preventDefault(); zoomBy(f); stop(); t = setInterval(() => zoomBy(Math.pow(f, 0.35)), 60); });
+  ["pointerup", "pointerleave", "pointercancel"].forEach(n => btn.addEventListener(n, stop));
+  btn.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") zoomBy(f); });
+}
+hold($("zin"), 1.3); hold($("zout"), 1 / 1.3);
+$("zpct").onclick = () => $("fit").click();
+addEventListener("keydown", e => {
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "+" || e.key === "=") zoomBy(1.3);
+  else if (e.key === "-" || e.key === "_") zoomBy(1 / 1.3);
+  else if (e.key === "0") $("fit").click();
+});
+addEventListener("resize", () => { dirty = true; draw(); });
+// ---- backups & sharing
+async function loadShare(){
+  const r = await (await fetch("/api/backups", {cache: "no-store"})).json();
+  $("exp_map").innerHTML = (r.maps || []).map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");
+  $("bk_list").innerHTML = (r.backups || []).length ? r.backups.map(b =>
+    `<div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="flex:1">${new Date(b.made * 1000).toLocaleString()} · ${esc(b.reason || "")} · ${b.mb} MB</span>`
+    + `<button data-restore="${esc(b.name)}">Restore</button></div>`).join("") : "No backups yet.";
+  document.querySelectorAll("[data-restore]").forEach(b => b.onclick = async () => {
+    if (!confirm("Restore this backup? Your maps now are backed up first, and Mapping is switched off.")) return;
+    $("share_msg").textContent = "Restoring…";
+    const x = await (await fetch("/api/restore", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: b.dataset.restore})})).json();
+    $("share_msg").textContent = x.ok ? "Restored. (Mapping is off - switch it on in the HUD when you're ready.)" : "Restore failed: " + x.error;
+    loadShare(); tick();
+  });
+}
+$("sharebtn").onclick = () => { $("sharepanel").hidden = !$("sharepanel").hidden; if (!$("sharepanel").hidden) loadShare(); };
+$("bk_close").onclick = () => { $("sharepanel").hidden = true; };
+$("bk_now").onclick = async () => {
+  $("share_msg").textContent = "Backing up…";
+  const x = await (await fetch("/api/backup", {method: "POST"})).json();
+  $("share_msg").textContent = x.ok && x.name ? "Backed up: " + x.name : "Nothing to back up yet.";
+  loadShare();
+};
+$("exp_go").onclick = () => { const m = $("exp_map").value; if (m) location.href = "/api/export?map=" + encodeURIComponent(m); };
+$("imp_file").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  $("share_msg").textContent = "Importing " + f.name + "…";
+  const x = await (await fetch("/api/import", {method: "POST", headers: {"Content-Type": "application/zip"}, body: f})).json();
+  $("share_msg").textContent = x.ok ? `Imported ${x.added} shots - ${x.how}. (Mapping is off - switch it on in the HUD.)` : "Import failed: " + x.error;
+  e.target.value = ""; loadShare(); tick();
+};
+
+// (the whole map used to be redrawn 60 times a second just to pulse the ring around your dot)
+function rafLoop(){ draw(); requestAnimationFrame(rafLoop); }
+setInterval(() => { dirty = true; }, 250);
+tick(); setInterval(tick, 1500); rafLoop();
+</script>
+</body>
+</html>

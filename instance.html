@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instance Screen</title>
+<style>
+:root{
+  --bg:#0b0907; --panel:#15110d; --line:#33291d; --gold:#f0c968; --gold2:#a8843a;
+  --text:#ece4d6; --dim:#8f8473; --hp:#46c957; --red:#e9563f; --boss:#c77dff; --orange:#ff9a3a;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:radial-gradient(ellipse at top,#1b150f 0%,var(--bg) 70%);color:var(--text);
+  font-family:"Segoe UI",system-ui,sans-serif;font-size:1.6vh;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:1.4vh;padding:.9vh 1.6vh;border-bottom:1px solid var(--line)}
+.top .name{font:600 2.8vh Georgia,serif;color:var(--gold)}
+.top .tag{color:var(--dim)}
+.pill{padding:.3vh 1vh;border-radius:2vh;border:1px solid var(--line);color:var(--dim);font-size:1.5vh}
+.pill.in{color:#fff;background:#3b2470;border-color:var(--boss)}
+.pill.first{color:#ffe08a;border-color:#8a7030}
+select{background:#0f0c09;color:var(--text);border:1px solid var(--line);border-radius:.4vh;font-size:1.5vh;padding:.3vh .6vh}
+.top a{color:var(--gold2);font-size:1.5vh;text-decoration:none}
+.grid{flex:1;display:grid;gap:1.2vh;padding:1.2vh 1.6vh 1.6vh;min-height:0;
+  grid-template-columns:1.25fr 1fr 1fr;grid-template-rows:minmax(0,1.2fr) minmax(0,1fr)}
+.card{background:linear-gradient(180deg,#19140f,#120f0b);border:1px solid var(--line);border-radius:1vh;
+  padding:1.1vh 1.4vh;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.card h3{margin:0 0 .7vh;font-size:1.3vh;font-weight:600;text-transform:uppercase;letter-spacing:.25vh;color:var(--gold2);display:flex;gap:1vh;align-items:center}
+.route{grid-row:1 / span 2}
+.dim{color:var(--dim)} .small{font-size:1.35vh}
+canvas{flex:1;min-height:0;width:100%;height:0;display:block;border-radius:.6vh;background:#0e0b08}
+.next{margin-top:.8vh;font-size:2.2vh;font-weight:700;color:var(--boss);display:flex;align-items:center;gap:1vh}
+.next .arrow{display:inline-block;font-size:3vh;transition:transform .4s}
+.list{flex:1;min-height:0;overflow:auto}
+.li{display:flex;align-items:center;gap:.6vh;padding:.25vh 0;border-bottom:1px solid #241d15;font-size:1.35vh;cursor:default}
+.li img{width:2.2vh;height:2.2vh;border-radius:.3vh;border:1px solid currentColor}
+.li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .val{font-variant-numeric:tabular-nums;color:#e6c35c;white-space:nowrap}
+.q0{color:#9d9d9d} .q1{color:#ffffff} .q2{color:#1eff00} .q3{color:#0070dd} .q4{color:#a335ee} .q5{color:#ff8000} .q7{color:#e6cc80}
+#itip{position:fixed;z-index:50;pointer-events:none;background:#070b14f0;border:1px solid #5a6a8a;border-radius:.5vh;
+  padding:.8vh 1vh;font-size:1.35vh;line-height:1.45;min-width:22vh;max-width:34vh;color:#fff;box-shadow:0 .5vh 2vh #000a}
+#itip .nm{font-size:1.5vh;font-weight:700} #itip .use{color:#1eff00} #itip .stat{color:#fff}
+#itip .row{display:flex;justify-content:space-between;gap:2vh} #itip .ft{margin-top:.5vh;color:#e6c35c}
+#itip .dim{color:#9a8f80}
+.boss{border:1px solid var(--line);border-radius:.7vh;padding:.7vh .9vh;margin-bottom:.6vh;background:#1a1510}
+.boss.done{opacity:.55}
+.boss.nextb{border-color:var(--boss);box-shadow:0 0 1.2vh rgba(199,125,255,.2) inset}
+.boss .h{display:flex;gap:.8vh;align-items:baseline}
+.boss .n{font-weight:700;font-size:1.8vh;color:#e2c6ff}
+.boss .st{margin-left:auto;font-size:1.3vh}
+.mv{display:inline-block;margin:.3vh .5vh 0 0;padding:.1vh .6vh;border-radius:.4vh;background:#241d16;font-size:1.3vh}
+.mv.heal{background:#173a1b;color:#9fe0a8} .mv.debuff{background:#2a1840;color:#d8b0ff} .mv.damage{background:#3a2210;color:#ffc08a}
+.badge{font-size:1.1vh;font-weight:700;border-radius:.3vh;padding:0 .5vh;margin-left:.4vh}
+.badge.elite{background:#ffcf5a;color:#111} .badge.rare{background:#c0c0ff;color:#111} .badge.heals{background:var(--red);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:1.4vh}
+th{color:var(--dim);font-weight:500;text-align:right;padding:.3vh .5vh;border-bottom:1px solid var(--line);white-space:nowrap}
+td{text-align:right;padding:.35vh .5vh;border-bottom:1px solid #241d15;vertical-align:top}
+th:first-child,td:first-child{text-align:left}
+.empty{color:var(--dim);padding:1vh 0}
+#tip{position:fixed;pointer-events:none;background:#0f0c09;border:1px solid var(--gold2);border-radius:.6vh;
+  padding:.8vh 1vh;font-size:1.45vh;line-height:1.4;max-width:34vh;z-index:9;box-shadow:0 .5vh 2vh #000}
+#tip b{color:var(--gold)}
+.first{padding:1vh;border:1px dashed #8a7030;border-radius:.7vh;color:#ffe08a;margin-bottom:.8vh;font-size:1.5vh}
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="name" id="iname">Instances</span>
+  <span class="pill" id="status">—</span>
+  <span class="tag" id="facts"></span>
+  <span style="margin-left:auto"></span>
+  <select id="pick"></select>
+  <a href="/hud">HUD</a> <a href="/group">group</a> <a href="/map">map</a> <a href="/dungeon">live dungeon</a>
+</div>
+
+<div class="grid">
+  <section class="card route">
+    <h3>Route <span class="dim" id="routeNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <canvas id="map"></canvas>
+    <div class="next" id="next"></div>
+  </section>
+
+  <section class="card">
+    <h3>Bosses <span class="dim" id="bossNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <div class="list" id="bosses"></div>
+  </section>
+
+  <section class="card">
+    <h3>Mobs here</h3>
+    <div class="list" id="mobs"></div>
+  </section>
+
+  <section class="card">
+    <h3>Runs</h3>
+    <div class="list" id="runs"></div>
+  </section>
+
+  <section class="card">
+    <h3>Loot seen <span class="dim" id="lootval" style="font-weight:400"></span></h3>
+    <div class="list" id="loot"></div>
+  </section>
+</div>
+
+<div id="itip" hidden></div>
+<div id="tip" hidden></div>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n == null || !isFinite(n) ? "—" : Math.round(n).toLocaleString();
+// ---- item hover tooltip (WoW style, from the Wowhead data cached in itemcache.json)
+let ITEMS = {};
+function coinI(c){ c = c || 0; if (!c) return "—"; const g = Math.floor(c / 10000), s = Math.floor(c / 100) % 100, k = c % 100;
+  return (g ? g + "g " : "") + (g || s ? s + "s " : "") + k + "c"; }
+function itemRow(l){
+  ITEMS[l.item] = l;
+  return `<div class="li q${l.q ?? 1}" data-item="${esc(l.item)}">
+    ${l.icon ? `<img src="https://wow.zamimg.com/images/wow/icons/small/${l.icon}.jpg" alt="">` : ""}
+    <span class="nm">${l.rolls ? "🎲 " : ""}${esc(l.item)}${l.n > 1 ? ` ×${l.n}` : ""} <span class="dim">· ${esc(Object.keys(l.who).join(", "))}</span></span>
+    <span class="val">${l.q == null ? '<span class="dim">…</span>' : coinI(l.value)}</span></div>`;
+}
+function itemTip(l){
+  const lines = (l.tt || [["name", l.item]]).map(([k, t]) => k === "name" ? `<div class="nm q${l.q ?? 1}">${esc(t)}</div>`
+    : t.includes("\t") ? `<div class="row"><span>${esc(t.split("\t")[0])}</span><span>${esc(t.split("\t")[1])}</span></div>`
+    : `<div class="${k}">${esc(t)}</div>`).join("");
+  const who = Object.entries(l.who).map(([w, n]) => esc(w) + (n > 1 ? " ×" + n : "")).join(", ");
+  return lines + `<div class="ft">Sell ${coinI(l.sell)}${l.n > 1 ? ` · ×${l.n} = ${coinI(l.value)}` : ""}</div>
+    <div class="dim">${l.rolls ? "🎲 won on a roll · " : ""}${who}</div>`;
+}
+document.addEventListener("mousemove", e => {
+  const el = e.target.closest && e.target.closest("[data-item]"), tip = document.getElementById("itip");
+  if (!el || !ITEMS[el.dataset.item]) { tip.hidden = true; return; }
+  tip.innerHTML = itemTip(ITEMS[el.dataset.item]); tip.hidden = false;
+  tip.style.left = Math.max(8, Math.min(e.clientX + 16, innerWidth - tip.offsetWidth - 8)) + "px";
+  tip.style.top = Math.max(8, Math.min(e.clientY + 16, innerHeight - tip.offsetHeight - 8)) + "px";
+});
+const CLS_C = {Warrior: "#c79c6e", Paladin: "#f58cba", Hunter: "#abd473", Rogue: "#fff569", Priest: "#ffffff",
+  Shaman: "#0070de", Mage: "#69ccf0", Warlock: "#9482c9", Druid: "#ff7d0a"};
+function memList(ms, names){
+  if (!ms || !ms.length) return esc((names || []).join(", "));
+  const rng = (a, b) => a ? a + (b && b !== a ? "→" + b : "") : "";
+  return ms.map(m => `<span style="color:${CLS_C[m.cls] || "#d8cfc0"}" title="${esc(m.cls || "class unknown")}${m.lvl ? ` · level ${rng(m.lvl, m.lvl_end)}` : " · level not seen (target them in the instance to record it)"}${m.gear ? ` · gear (avg item level) ${rng(m.gear, m.gear_end)}` : ""}">${esc(m.name)}${m.lvl ? ` <b>${rng(m.lvl, m.lvl_end)}</b>` : ` <b class="dim">?</b>`}${m.gear ? `<span class="dim" style="font-size:.85em"> ⚙${rng(m.gear, m.gear_end)}</span>` : ""}</span>`).join(", ");
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const clock = t => new Date(t * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+function dur(s){ if (s == null) return "—"; s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`; }
+let D = null, chosen = new URLSearchParams(location.search).get("name");
+
+$("pick").onchange = e => { chosen = e.target.value || null; tick(); };
+
+function moveTags(moves, heals){
+  const out = (moves || []).filter(m => m.kind !== "melee").slice(0, 4).map(m =>
+    `<span class="mv ${m.kind}">${esc(m.spell)}${m.avg ? ` ${m.kind === "heal" ? "+" : ""}${Math.round(m.avg)}` : ""}</span>`);
+  const melee = (moves || []).find(m => m.kind === "melee");
+  if (melee) out.unshift(`<span class="mv">hits ${Math.round(melee.avg)} (max ${melee.max})</span>`);
+  return out.join("");
+}
+function badges(info, heals){
+  let b = "";
+  if (info && info.rank) b += `<span class="badge ${info.rank.toLowerCase().includes("rare") ? "rare" : "elite"}">${esc(info.rank)}</span>`;
+  if (heals) b += `<span class="badge heals">heals</span>`;
+  return b;
+}
+
+// The two halves of a two-part dungeon (Forever's Deadmines: the open-world mine and the instance behind its
+// portal) are told apart by the server - instance.py snapshot() sends only the half you're in, and the portal.
+function halve(d){
+  if (d.underlay && (!d.underlay.url || d.underlay.unit === "coords")) d.underlay = null;   // not this dungeon's picture
+}
+
+function render(d){
+  halve(d);
+  // picker: visited instances first, then every known dungeon
+  const opts = [["", d.inside ? `(current) ${d.name}` : "(current / last)"]]
+    .concat(d.visited.map(n => [n, `★ ${n}`]))
+    .concat((d.dungeons || []).filter(x => !d.visited.includes(x.name)).map(x => [x.name, `${x.name} (lvl ${x.level})`]));
+  const html = opts.map(([v, l]) => `<option value="${esc(v)}" ${v === (chosen || "") ? "selected" : ""}>${esc(l)}</option>`).join("");
+  if ($("pick").innerHTML !== html && document.activeElement !== $("pick")) $("pick").innerHTML = html;
+
+  if (!d.name) {
+    $("iname").textContent = "Instances"; $("status").textContent = "not in an instance"; $("status").className = "pill";
+    $("facts").textContent = "pick a dungeon above to preview it";
+    $("bosses").innerHTML = `<div class="empty">Walk into a dungeon and everything gets recorded: mobs, bosses, your route, deaths and loot. Next time you'll have it all.</div>`;
+    ["mobs", "runs", "loot"].forEach(k => $(k).innerHTML = ""); $("next").textContent = "";
+    $("mobs").innerHTML = `<table><thead><tr><th>Dungeon</th><th>Level</th><th>Req</th><th>Bosses</th></tr></thead><tbody>${(d.dungeons || []).map(x => `<tr><td>${esc(x.name)}</td><td>${esc(x.level)}</td><td>${x.req_level ?? "—"}</td><td>${x.bosses}</td></tr>`).join("")}</tbody></table>`;
+    drawMap(d); return;
+  }
+  const L = d.lookup || {};
+  $("iname").textContent = d.name;
+  const st = $("status");
+  if (d.inside) { st.textContent = `IN · run ${(d.runs.length + 1)} · ${dur(d.current.dur)}`; st.className = "pill in"; }
+  else if (d.first_visit) { st.textContent = "never been here: preview"; st.className = "pill first"; }
+  else { st.textContent = `${d.runs.length} run${d.runs.length === 1 ? "" : "s"} recorded`; st.className = "pill"; }
+  $("facts").textContent = [L.level ? `level ${L.level}` : "", L.req_level ? `requires ${L.req_level}` : "", L.players ? `${L.players} players` : "",
+    L.bosses ? `${L.bosses.length} bosses` : "", d.current ? `this run: ${d.current.kills} kills · ${d.current.deaths} deaths · ${d.current.bosses} bosses · ${fmt(d.current.xp)} XP` : ""].filter(Boolean).join(" · ");
+
+  // bosses
+  const nextName = d.next && d.next.name;
+  const killedCount = d.bosses.filter(b => b.killed_now).length;
+  $("bossNote").textContent = d.inside ? `· ${killedCount}/${d.bosses.length} down this run` : "";
+  $("bosses").innerHTML = (d.first_visit ? `<div class="first">First time here: bosses in order from the dungeon database. Their moves, health and loot get recorded as you fight them.</div>` : "") +
+    (d.bosses.length ? d.bosses.map((b, i) => `<div class="boss ${b.killed_now ? "done" : ""} ${b.name === nextName ? "nextb" : ""}">
+      <div class="h"><span class="dim">${i + 1}.</span><span class="n">${esc(b.name)}</span>${badges(b.info, b.heals)}
+        <span class="st">${b.killed_now ? "✓ dead" : b.name === nextName ? "◆ next" : ""}
+          ${b.kills ? `<span class="dim">· killed ${b.kills}× ${b.best ? `(best ${dur(b.best)})` : ""}</span>` : b.attempts ? `<span class="dim">· ${b.attempts} tries</span>` : ""}</span></div>
+      ${b.info && !b.info.error && (b.info.level || b.info.type) ? `<div class="dim small">${[b.info.level ? "level " + esc(b.info.level) : "", esc(b.info.type || ""), b.info.title ? "&lt;" + esc(b.info.title) + "&gt;" : ""].filter(Boolean).join(" · ")}</div>` : ""}
+      <div>${moveTags(b.moves, b.heals) || `<span class="dim small">${b.kills || b.attempts ? "" : "no fight recorded yet"}</span>`}</div></div>`).join("")
+    : `<div class="empty">No bosses known yet.</div>`);
+
+  // mobs
+  $("mobs").innerHTML = d.mobs.length ? `<table><thead><tr><th>Mob</th><th>Lvl</th><th>Seen</th><th>Killed</th><th>What it does</th></tr></thead><tbody>
+    ${d.mobs.map(m => `<tr><td>${esc(m.name)}${badges(m.info, m.heals)}</td><td>${esc(m.levels || (m.info && m.info.level) || "—")}</td><td>${m.seen}</td><td>${m.kills}</td>
+      <td style="text-align:left">${moveTags(m.moves, m.heals) || '<span class="dim">—</span>'}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">${d.first_visit ? "Nothing recorded yet. Every mob you meet in here gets listed with what it does." : "—"}</div>`;
+
+  // runs
+  const runs = (d.current ? [{...d.current, now: true}] : []).concat(d.runs);
+  $("runs").innerHTML = runs.length ? `<table><thead><tr><th>When</th><th>Time</th><th>Bosses</th><th>Kills</th><th>Deaths</th><th>XP</th><th>Loot</th><th>Coin</th></tr></thead><tbody>
+    ${runs.map(r => `<tr><td>${r.now ? "<b>now</b>" : clock(r.start)}</td><td>${dur(r.dur)}</td><td>${r.bosses}</td><td>${r.kills}</td><td>${r.deaths}</td><td>${fmt(r.xp)}</td><td>${r.loot || 0}</td><td>${coinI(r.copper)}</td></tr>
+      <tr><td colspan="8" class="small" style="text-align:left;border-bottom:1px solid #2b2218;padding-bottom:.5vh">${memList(r.members, r.party)} ${(r.snaps || []).map((f, i) => `<a href="/snaps/${f}" target="_blank" title="party frames ${i ? "3 min in" : "on the way in"}" onclick="event.stopPropagation()">📷</a>`).join(" ")}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">No runs yet.</div>`;
+  $("lootval").textContent = d.loot_value ? "· " + coinI(d.loot_value) + " vendor" : "";
+  $("loot").innerHTML = d.loot.length ? d.loot.map(itemRow).join("")
+    : `<div class="empty">Nothing yet. Loot comes from the chat log: type <b>/chatlog</b> in game to record it.</div>`;
+
+  // direction
+  if (d.next) {
+    $("next").innerHTML = `<span class="arrow" style="transform:rotate(${d.next.bearing}deg)">⬆</span> Next: ${esc(d.next.name)} · ${fmt(d.next.yards)} yd ${d.next.compass}`;
+  } else $("next").textContent = d.inside && !d.first_visit ? "All known bosses down, or no positions recorded yet." : "";
+  $("routeNote").textContent = ((d.fights || []).length ? `· ${d.fights.length} pulls: green small, yellow large, purple bosses${d.deaths && d.deaths.length ? `, ${d.deaths.length} deaths (role symbol on red)` : ""} · hover for details` : "")
+    + (d.trails.length ? ` · earlier runs in grey, this run in gold` : d.first_visit ? " · your path gets drawn as you go" : "");
+  drawMap(d);
+}
+
+let hits = [];
+function tipHtml(h){
+  if (h.start) return `<b style="color:#9fe0a8">▶ Entrance</b><br><span class="dim">where you zone in: every run starts here</span>`;
+  if (h.death) {
+    const x = h.death, when = new Date(x.t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit", second: "2-digit"});
+    return `<b style="color:#e9563f">✝ ${esc(x.name)}</b> · ${esc(x.role)}${x.cls ? " · " + esc(x.cls) : ""}<br><span class="dim">${when}</span>` +
+      (x.killer ? `<br>killed by <b>${esc(x.killer)}</b>` : "") +
+      (x.hits.length > 1 ? `<br><span class="dim">last hits: ${esc(x.hits.join(" · "))}</span>` : "");
+  }
+  const f = h.f, b = h.boss;
+  const when = f ? new Date(f.t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}) : "";
+  let out = b ? `<b>${esc(b.name)}</b> (boss)<br>` : `<b>${f.size >= 3 ? "Large" : "Small"} pull</b> · ${f.size} mob${f.size === 1 ? "" : "s"}<br>`;
+  if (f) {
+    out += Object.entries(f.mobs).map(([n, c]) => `${c}× ${esc(n)}`).join("<br>") + "<br>";
+    out += `<span class="dim">${when} · ${dur(f.dur)} · killed ${f.kills}</span><br>`;
+    out += `damage taken <b>${fmt(f.taken)}</b> · dealt ${fmt(f.dealt)}<br>healing <b>${fmt(f.healed)}</b>`;
+    if (f.deaths.length) out += `<br><span style="color:#e9563f">✝ ${esc(f.deaths.join(", "))}</span>`;
+  } else if (b) out += `<span class="dim">${b.kills ? `killed ${b.kills}×, best ${dur(b.best)}` : "not fought yet"}</span>`;
+  return out;
+}
+$("map").addEventListener("mousemove", e => {
+  const r = $("map").getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const h = hits.filter(k => Math.hypot(k.x - x, k.y - y) <= k.r).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0];
+  const tip = $("tip");
+  if (!h) { tip.hidden = true; return; }
+  tip.innerHTML = tipHtml(h); tip.hidden = false;
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px";
+  tip.style.top = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8) + "px";
+});
+$("map").addEventListener("mouseleave", () => { $("tip").hidden = true; });
+
+function drawMap(d){
+  const cv = $("map"), r = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * r) || cv.height !== Math.round(h * r)) { cv.width = Math.round(w * r); cv.height = Math.round(h * r); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(r, 0, 0, r, 0, 0); ctx.clearRect(0, 0, w, h);
+  if (!d.name) return;
+  // world coords: +x north, +y west -> screen x = -y, screen y = -x
+  const pts = [];
+  (d.trails || []).forEach(t => t.forEach(p => pts.push([p[1], p[2]])));
+  (d.cur_trail || []).forEach(p => pts.push([p[1], p[2]]));
+  if (d.start) pts.push(d.start);
+  if (d.portal) pts.push(d.portal);
+  (d.bosses || []).forEach(b => b.pos && pts.push(b.pos));
+  if (d.me) pts.push(d.me);
+  const U = d.underlay;            // the dungeon's real layout (stitched minimap), lined up with the log
+  if (U) { pts.push([-U.origin[1] / U.k, -U.origin[0] / U.k], [-(U.origin[1] + U.size[1]) / U.k, -(U.origin[0] + U.size[0]) / U.k]); }
+  if (!pts.length) { ctx.fillStyle = "#6a5f50"; ctx.font = "14px Segoe UI"; ctx.fillText(d.first_visit ? "No route yet: it's drawn the first time you go through." : "No positions recorded.", 14, 24); return; }
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of pts) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+  const sc = Math.min((w - 40) / Math.max(40, maxY - minY), (h - 40) / Math.max(40, maxX - minX));
+  const cx = (minY + maxY) / 2, cy = (minX + maxX) / 2;
+  const P = (x, y) => [w / 2 - (y - cx) * sc, h / 2 - (x - cy) * sc];
+  const line = (tr, col, lw) => { if (tr.length < 2) return; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath();
+    tr.forEach((p, i) => { const [a, b] = P(p[1], p[2]);
+      const jump = i && Math.hypot(p[1] - tr[i - 1][1], p[2] - tr[i - 1][2]) > 40;     // death / ghost run / teleport
+      i && !jump ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); };
+  if (U) {
+    if (!window._ulImg || window._ulImg._src !== U.url) { const im = new Image(); im._src = U.url; im.src = U.url; im.onload = () => drawMap(D); window._ulImg = im; }
+    const im = window._ulImg;
+    if (im.complete && im.naturalWidth) {
+      ctx.globalAlpha = .8;
+      ctx.drawImage(im, w / 2 + (U.origin[0] / U.k + cx) * sc, h / 2 + (U.origin[1] / U.k + cy) * sc, U.size[0] / U.k * sc, U.size[1] / U.k * sc);
+      ctx.globalAlpha = 1;
+    }
+  }
+  (d.trails || []).forEach(t => line(t, U ? "rgba(255,240,200,.55)" : "rgba(180,170,150,.35)", 2));
+  line(d.cur_trail || [], "rgba(240,201,104,.9)", 2.5);
+  ctx.font = "bold 12px Segoe UI";
+  // pulls: green = small (1-2 mobs), yellow = large (3+); hover for details
+  hits = [];
+  (d.fights || []).forEach(f => { if (!f.pos || f.boss) return; const [a, c] = P(f.pos[0], f.pos[1]);
+    const big = f.size >= 3, rad = 4 + Math.min(f.size, 6);
+    ctx.fillStyle = big ? "rgba(255,216,74,.85)" : "rgba(70,201,87,.85)"; ctx.strokeStyle = f.deaths.length ? "#e9563f" : "#000";
+    ctx.lineWidth = f.deaths.length ? 3 : 1.5; ctx.beginPath(); ctx.arc(a, c, rad, 0, 7); ctx.fill(); ctx.stroke();
+    hits.push({x: a, y: c, r: rad + 3, f}); });
+  (d.bosses || []).forEach(b => { if (!b.pos) return; const [a, c] = P(b.pos[0], b.pos[1]);
+    const bf = (d.fights || []).find(f => f.boss === b.name);
+    hits.push({x: a, y: c, r: 12, f: bf || null, boss: b});
+    ctx.fillStyle = b.killed_now ? "#6a5a80" : "#c77dff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(a, c - 8); ctx.lineTo(a + 8, c); ctx.lineTo(a, c + 8); ctx.lineTo(a - 8, c); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#e2c6ff"; ctx.fillText((b.killed_now ? "✓ " : "") + b.name, a + 10, c + 4); });
+  // deaths: the role symbol in class colour, on a dark red disc
+  const ROLE = {tank: "🛡", healer: "✚", dps: "⚔"};
+  const CLASS = {Warrior: "#C79C6E", Paladin: "#F58CBA", Hunter: "#ABD473", Rogue: "#FFF569", Priest: "#FFFFFF",
+                 Mage: "#69CCF0", Warlock: "#9482C9", Druid: "#FF7D0A", Shaman: "#2E8CFF"};
+  (d.deaths || []).forEach((x, i) => {
+    let [a, c] = P(x.pos[0], x.pos[1]);
+    const same = (d.deaths || []).slice(0, i).filter(y => Math.hypot(y.pos[0] - x.pos[0], y.pos[1] - x.pos[1]) < 3).length;
+    a += same * 13;                                  // nudge stacked deaths apart
+    ctx.fillStyle = "#5a0f08"; ctx.strokeStyle = "#e9563f"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(a, c, 10, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.font = "13px Segoe UI Emoji, Segoe UI Symbol"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = CLASS[x.cls] || "#fff"; ctx.fillText(ROLE[x.role] || "✝", a, c + 1);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    hits.push({x: a, y: c, r: 12, death: x});
+  });
+  if (d.start) {                                   // the entrance: where every run begins
+    const [a, c] = P(d.start[0], d.start[1]);
+    ctx.fillStyle = "#46c957"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(a - 7, c - 9); ctx.lineTo(a + 9, c); ctx.lineTo(a - 7, c + 9); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.font = "bold 12px Segoe UI"; ctx.fillStyle = "#9fe0a8"; ctx.fillText("START", a + 12, c + 4);
+    hits.push({x: a, y: c, r: 12, start: true});
+  }
+  if (d.portal) {                                  // the way in, while you're in the open-world mine
+    const [a, c] = P(d.portal[0], d.portal[1]);
+    ctx.strokeStyle = "#c77dff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(a, c, 9, 0, 7); ctx.stroke();
+    ctx.fillStyle = "rgba(199,125,255,.35)"; ctx.beginPath(); ctx.arc(a, c, 5, 0, 7); ctx.fill();
+    ctx.font = "bold 12px Segoe UI"; ctx.fillStyle = "#e2c6ff"; ctx.fillText("PORTAL", a + 13, c + 4);
+  }
+  if (d.me) { const [a, b] = P(d.me[0], d.me[1]); ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(a, b, 7, 0, 7); ctx.fill(); ctx.stroke(); }
+  // 20-yard scale
+  ctx.strokeStyle = "#9a8f7e"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(12, h - 12); ctx.lineTo(12 + 20 * sc, h - 12); ctx.stroke();
+  ctx.fillStyle = "#9a8f7e"; ctx.font = "11px Segoe UI"; ctx.fillText("20 yd", 14, h - 17);
+}
+
+async function tick(){
+  try {
+    D = await (await fetch("/api/instance" + (chosen ? "?name=" + encodeURIComponent(chosen) : ""), {cache: "no-store"})).json();
+    render(D);
+  } catch (e) { $("status").textContent = "companion not running"; }
+}
+tick(); setInterval(tick, 2500);
+addEventListener("resize", () => D && drawMap(D));
+</script>
+</body>
+</html>

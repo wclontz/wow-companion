@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Group Screen</title>
+<style>
+:root{
+  --bg:#0b0907; --panel:#15110d; --line:#33291d; --gold:#f0c968; --gold2:#a8843a;
+  --text:#ece4d6; --dim:#8f8473; --hp:#46c957; --mana:#4a86ee; --red:#e9563f; --rage:#d0402a; --energy:#e8d03a;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:radial-gradient(ellipse at top,#1b150f 0%,var(--bg) 70%);color:var(--text);
+  font-family:"Segoe UI",system-ui,sans-serif;font-size:1.6vh;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:1.4vh;padding:.9vh 1.6vh;border-bottom:1px solid var(--line)}
+.top .name{font:600 2.8vh Georgia,serif;color:var(--gold)}
+.top .tag{color:var(--dim)}
+.pill{padding:.3vh 1vh;border-radius:2vh;border:1px solid var(--line);color:var(--dim);font-size:1.5vh}
+.pill.combat{color:#fff;background:#6a1c12;border-color:var(--red)}
+.top a{color:var(--gold2);font-size:1.5vh;text-decoration:none}
+.grid{flex:1;display:grid;gap:1.2vh;padding:1.2vh 1.6vh 1.6vh;min-height:0;
+  grid-template-columns:1.55fr 1fr 1fr;grid-template-rows:minmax(0,1.15fr) minmax(0,1fr)}
+.card{background:linear-gradient(180deg,#19140f,#120f0b);border:1px solid var(--line);border-radius:1vh;
+  padding:1.1vh 1.4vh;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.card h3{margin:0 0 .7vh;font-size:1.3vh;font-weight:600;text-transform:uppercase;letter-spacing:.25vh;color:var(--gold2);display:flex;align-items:center;gap:1vh}
+.party{grid-row:1 / span 2}
+.dim{color:var(--dim)} .small{font-size:1.35vh}
+.members{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:.9vh}
+.mem{border:1px solid var(--line);border-radius:.8vh;padding:.8vh 1vh;background:#1a1510;display:grid;
+  grid-template-columns:auto 1fr auto;gap:.3vh 1vh;align-items:center}
+.mem.me{border-color:#5a4a26}
+.mem.aggro{border-color:var(--red);box-shadow:0 0 1.2vh rgba(233,86,63,.3) inset}
+.mem.dead{opacity:.55}
+.role{font-size:2.4vh;width:3vh;text-align:center;grid-row:1 / span 3;align-self:start}
+.mname{font-weight:700;font-size:1.9vh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mname .cls{font-weight:400;font-size:1.3vh;color:var(--dim);margin-left:.6vh}
+.dist{font-size:1.35vh;padding:.1vh .7vh;border-radius:1.5vh;white-space:nowrap}
+.dist.ok{color:#9fe0a8;border:1px solid #2f5a34} .dist.far{color:#fff;background:#6a1c12;border:1px solid var(--red)}
+.bars{grid-column:2 / span 2;display:grid;grid-template-columns:1fr 1fr;gap:.6vh}
+.bar{position:relative;height:2.3vh;border-radius:.4vh;overflow:hidden;background:#241d16}
+.bar>i{position:absolute;inset:0 auto 0 0;transition:width .4s}
+.bar>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.3vh;font-weight:600;text-shadow:0 1px 3px #000}
+.bar.hp{background:#132e17} .bar.hp>i{background:linear-gradient(90deg,#2f9a3d,var(--hp))}
+.bar.p0{background:#121f3c} .bar.p0>i{background:var(--mana)}
+.bar.p1{background:#3a1410} .bar.p1>i{background:var(--rage)}
+.bar.p3{background:#3a3410} .bar.p3>i{background:var(--energy)}
+.stats{grid-column:2 / span 2;display:flex;gap:1.4vh;flex-wrap:wrap;font-size:1.35vh;color:var(--dim)}
+.stats b{color:var(--text);font-variant-numeric:tabular-nums}
+.inc{color:#ff9a7a}
+.badge{font-size:1.15vh;font-weight:700;border-radius:.3vh;padding:0 .5vh;margin-left:.6vh;vertical-align:.2vh}
+.badge.aggro{background:var(--red);color:#fff} .badge.dead{background:#555;color:#fff}
+.list{flex:1;min-height:0;overflow:auto}
+.tri{display:grid;grid-template-columns:9vh 1fr 6vh;gap:.8vh;align-items:center;padding:.45vh 0;border-bottom:1px solid #241d15}
+.tri .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.tri .v{text-align:right;font-variant-numeric:tabular-nums}
+.mbar{height:1.8vh;border-radius:.3vh;background:#241d16;position:relative;overflow:hidden}
+.mbar>i{position:absolute;inset:0 auto 0 0}
+.tabs{display:flex;gap:1.2vh;margin-left:auto;text-transform:none;letter-spacing:0}
+.tab{cursor:pointer;color:var(--dim);border-bottom:2px solid transparent;font-size:1.3vh}
+.tab.on{color:var(--gold2);border-bottom-color:var(--gold2)}
+.mapwrap{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:.6vh;background:#0e0b08}
+.mapwrap img{max-width:100%;max-height:100%;display:block}
+.mapwrap canvas{position:absolute;inset:0;width:100%;height:100%}
+.alert{padding:.5vh .8vh;border-radius:.5vh;background:#3a1610;border:1px solid var(--red);color:#ffb39e;margin-bottom:.5vh;font-size:1.45vh}
+.death{border-bottom:1px solid #241d15;padding:.5vh 0;font-size:1.4vh}
+.death b{color:var(--red)}
+.death .h{color:var(--dim);font-size:1.25vh;margin-left:1vh}
+table{width:100%;border-collapse:collapse;font-size:1.35vh}
+th{color:var(--dim);font-weight:500;text-align:right;padding:.3vh .5vh;border-bottom:1px solid var(--line)}
+td{text-align:right;padding:.3vh .5vh;border-bottom:1px solid #241d15;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+.empty{color:var(--dim);font-size:1.5vh;padding:1vh 0}
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="name">Group</span>
+  <span class="tag" id="gsize"></span>
+  <span class="pill" id="fightPill">out of combat</span>
+  <span class="tag" id="fightNums"></span>
+  <span style="margin-left:auto"></span>
+  <a href="/hud">HUD</a> <a href="/instance">instance</a> <a href="/map">map</a> <a href="/">all the numbers</a>
+</div>
+
+<div class="grid">
+  <section class="card party">
+    <h3>Party <span class="dim" id="partyNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <div class="members" id="members"></div>
+  </section>
+
+  <section class="card">
+    <h3>Who needs healing <span class="dim" style="text-transform:none;letter-spacing:0">· damage taken, last 10 s</span></h3>
+    <div class="list" id="triage"></div>
+  </section>
+
+  <section class="card">
+    <h3>Meters
+      <span class="tabs"><span class="tab on" data-m="dmg">Damage</span><span class="tab" data-m="heal">Healing</span><span class="tab" data-m="taken">Taken</span>
+        <span class="tab" data-s="fight" style="margin-left:1vh">fight</span><span class="tab on" data-s="session">session</span></span></h3>
+    <div class="list" id="meters"></div>
+  </section>
+
+  <section class="card">
+    <h3>Where everyone is <span class="dim" id="mapNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <div class="mapwrap" id="mapwrap"><img id="mapimg" alt=""><canvas id="map"></canvas></div>
+  </section>
+
+  <section class="card">
+    <h3>Alerts &amp; deaths</h3>
+    <div class="list" id="alerts"></div>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n == null || !isFinite(n) ? "—" : Math.round(n).toLocaleString();
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const clock = t => new Date(t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit", second: "2-digit"});
+function dur(s){ if (s == null) return "—"; s = Math.round(s); const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; }
+const CLASS = {Warrior: "#C79C6E", Paladin: "#F58CBA", Hunter: "#ABD473", Rogue: "#FFF569", Priest: "#FFFFFF",
+               Mage: "#69CCF0", Warlock: "#9482C9", Druid: "#FF7D0A", Shaman: "#2E8CFF"};
+const ROLE = {tank: "🛡", healer: "✚", dps: "⚔"};
+const PNAME = {0: "mana", 1: "rage", 3: "energy"};
+let S = null, meter = "dmg", scope = "session", lastMeterHtml = "";
+
+document.querySelectorAll(".tab[data-m]").forEach(t => t.onclick = () => { meter = t.dataset.m;
+  document.querySelectorAll(".tab[data-m]").forEach(x => x.classList.toggle("on", x === t)); S && renderMeters(S); });
+document.querySelectorAll(".tab[data-s]").forEach(t => t.onclick = () => { scope = t.dataset.s;
+  document.querySelectorAll(".tab[data-s]").forEach(x => x.classList.toggle("on", x === t)); S && renderMeters(S); });
+
+function bar(cls, v, max, label){
+  const w = max ? Math.max(0, Math.min(100, v / max * 100)) : 0;
+  return `<div class="bar ${cls}"><i style="width:${w}%"></i><span>${label}</span></div>`;
+}
+
+function renderTop(s){
+  const g = s.group;
+  $("gsize").textContent = g.in_group ? `${g.members.length} players${g.test ? " · TEST MODE (nearby players)" : ""}` : "not in a group";
+  const f = g.fight, p = $("fightPill");
+  if (f) { p.textContent = `IN COMBAT ${dur(f.dur)}`; p.className = "pill combat";
+    $("fightNums").textContent = `group ${fmt(f.dps)} dps · ${fmt(f.hps)} hps · ${fmt(f.taken)} taken`; }
+  else { p.textContent = "out of combat"; p.className = "pill"; $("fightNums").textContent = ""; }
+}
+
+function renderMembers(s){
+  const g = s.group, now = s.last_t || Date.now() / 1000;
+  const aggroOn = new Set(g.loose.filter(x => now - x.t < 15).map(x => x.on));
+  // gear scores from the add-on's strip (yours at once; a party member's once the add-on has inspected them)
+  const gear = (s.strip && s.strip.gear) || null;
+  const short = n => String(n || "").split("-")[0].split(" ")[0].toLowerCase();
+  const gearOf = m => !gear ? null : m.me ? gear.me : (gear.party || []).find(p => short(p.name) === short(m.name)) || null;
+  const gearTip = x => `gear score ${x.score} = item level x quality over ${x.worn} items · average item level ${x.avg}` +
+    (x.empty && x.empty.length ? ` · empty: ${x.empty.join(", ")}` : "") + (x.whole === false ? " · some items not read yet" : "");
+  const team = gear && gear.team ? ` · team gear score ${gear.team.score} (item level ${gear.team.avg}, ${gear.team.of} of ${1 + (gear.party || []).length}` +
+    (gear.team.missing.length ? `; not inspected yet: ${gear.team.missing.join(", ")}` : "") + ")" : "";
+  $("partyNote").textContent = (g.in_group ? "· from the combat log (updates as the game writes it)" : "· join a group and your party shows up here") + team;
+  $("members").innerHTML = g.members.map(m => {
+    const col = CLASS[m.cls] || "#d8cfc0";
+    const hpTxt = m.maxhp ? `${fmt(m.hp)} / ${fmt(m.maxhp)}` : m.hp_frac != null ? `${Math.round(m.hp_frac * 100)}%` : "—";
+    if (m.live && !m.maxhp) { m.hp = m.hp_frac; m.maxhp = 1; }
+    const pw = m.maxpower ? bar(`p${m.ptype in PNAME ? m.ptype : 0}`, m.power, m.maxpower, `${PNAME[m.ptype] || "power"} ${Math.round(m.power / m.maxpower * 100)}%`) : "<div></div>";
+    const dist = m.me ? `<span class="dist ok">you</span>` : m.dist == null ? "" :
+      `<span class="dist ${m.in_range ? "ok" : "far"}">${m.in_range ? fmt(m.dist) + " yd" : "OUT OF RANGE " + fmt(m.dist) + " yd"}</span>`;
+    const dead = m.hp === 0 && m.maxhp > 0;
+    return `<div class="mem ${m.me ? "me" : ""} ${aggroOn.has(m.name) ? "aggro" : ""} ${dead ? "dead" : ""}">
+      <div class="role" title="${m.role}">${ROLE[m.role]}</div>
+      <div class="mname" style="color:${col}">${esc(m.name)}<span class="cls">${esc(m.cls || "")} ${m.role}</span>${(x => x && x.score != null ? `<span class="badge" style="background:#3b3423;color:#f0c968" title="${esc(gearTip(x))}">⚙ ${x.score}</span>` : x ? '<span class="badge" style="background:#2a2a2a;color:#999" title="not inspected yet: the add-on inspects party members out of combat, within inspect range">⚙ ?</span>' : "")(gearOf(m))}${m.live ? '<span class="badge" style="background:#9fe0a8;color:#111">LIVE</span>' : ""}
+        ${aggroOn.has(m.name) ? '<span class="badge aggro">HAS AGGRO</span>' : ""}
+        ${m.rips ? `<span class="badge" style="background:#ff9a3a;color:#111" title="pulled threat off the tank">RIPPED ×${m.rips}</span>` : ""}
+        ${m.faults ? `<span class="badge" style="background:#6a1c12;color:#fff" title="aggro problems judged to be this player's fault">FAULT ×${m.faults}</span>` : ""}
+        ${m.role === "tank" && m.loose_mobs ? `<span class="badge aggro" title="mobs that never got onto the tank">LOOSE ×${m.loose_mobs}</span>` : ""}${dead ? '<span class="badge dead">DEAD</span>' : ""}</div>
+      <div>${dist}</div>
+      <div class="bars">${bar("hp", m.hp, m.maxhp, hpTxt)}${pw}</div>
+      <div class="stats">
+        <span>fight: dmg <b>${fmt(m.f_dmg)}</b> · heal <b>${fmt(m.f_heal)}</b> · taken <b>${fmt(m.f_taken)}</b></span>
+        ${m.inc10 ? `<span class="inc">taking <b>${fmt(m.inc10)}</b> in 10s</span>` : ""}
+        ${!m.me && (m.my_heal) ? `<span>your heals <b>${fmt(m.my_heal)}</b> (${m.my_over_pct}% over)</span>` : ""}
+        ${m.deaths ? `<span>deaths <b>${m.deaths}</b></span>` : ""}
+        ${m.top_hitter ? `<span>hit most by <b>${esc(m.top_hitter)}</b></span>` : ""}
+      </div></div>`;
+  }).join("") || `<div class="empty">No combat log yet.</div>`;
+}
+
+function renderTriage(s){
+  const ms = s.group.members.slice();
+  ms.sort((a, b) => ((b.inc10||0) - (a.inc10||0)) || ((a.hp / (a.maxhp || 1)) - (b.hp / (b.maxhp || 1))));
+  const max = Math.max(1, ...ms.map(m => m.inc10));
+  $("triage").innerHTML = ms.map(m => {
+    const hpPct = m.maxhp ? Math.round(m.hp / m.maxhp * 100) : null;
+    return `<div class="tri"><span class="n" style="color:${CLASS[m.cls] || "#d8cfc0"}">${esc(m.name)}</span>
+      <div class="mbar"><i style="width:${m.inc10 / max * 100}%;background:${m.inc10 ? "var(--red)" : "transparent"}"></i></div>
+      <span class="v">${m.inc10 ? fmt(m.inc10) : "—"}<span class="dim small"> ${hpPct != null ? hpPct + "%" : ""}</span></span></div>`;
+  }).join("") || `<div class="empty">—</div>`;
+}
+
+function renderMeters(s){
+  const key = scope === "fight" ? {dmg: "f_dmg", heal: "f_heal", taken: "f_taken"}[meter] : meter;
+  const ms = s.group.members.filter(m => m[key] > 0).sort((a, b) => b[key] - a[key]);
+  const tot = ms.reduce((a, m) => a + m[key], 0), max = Math.max(1, ...ms.map(m => m[key]));
+  const colr = {dmg: "#ff9a3a", heal: "#46c957", taken: "#e9563f"}[meter];
+  const html = ms.length ? ms.map(m => `<div class="tri"><span class="n" style="color:${CLASS[m.cls] || "#d8cfc0"}">${esc(m.name)}</span>
+      <div class="mbar"><i style="width:${m[key] / max * 100}%;background:${colr}"></i></div>
+      <span class="v">${fmt(m[key])}<span class="dim small"> ${Math.round(m[key] / tot * 100)}%</span></span></div>`).join("")
+    + (meter === "heal" ? `<div class="dim small" style="margin-top:.6vh">Overheal: ${ms.map(m => `${esc(m.name)} ${m.overheal}%`).join(" · ")}</div>` : "")
+    : `<div class="empty">Nothing yet${scope === "fight" ? " this fight" : ""}.</div>`;
+  if (html !== lastMeterHtml) { $("meters").innerHTML = html; lastMeterHtml = html; }
+}
+
+function sizeCanvas(cv){
+  const r = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * r) || cv.height !== Math.round(h * r)) { cv.width = Math.round(w * r); cv.height = Math.round(h * r); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(r, 0, 0, r, 0, 0); return [ctx, w, h];
+}
+function renderMap(s){
+  const loc = s.location || {}, img = $("mapimg"), want = loc.map_url || "";
+  if ((img.getAttribute("src") || "") !== want) { if (want) img.src = want; else img.removeAttribute("src"); }
+  $("mapNote").textContent = loc.zone ? `· ${loc.zone}` : "";
+  const [ctx, w, h] = sizeCanvas($("map")); ctx.clearRect(0, 0, w, h);
+  if (!want || !img.naturalWidth) return;
+  const r = img.getBoundingClientRect(), wr = $("mapwrap").getBoundingClientRect();
+  const P = (x, y) => [r.left - wr.left + x / 100 * r.width, r.top - wr.top + y / 100 * r.height];
+  ctx.font = "bold 11px Segoe UI";
+  for (const m of s.group.members) {
+    const pos = m.me && loc.x != null ? [loc.x, loc.y] : m.map;
+    if (!pos) continue;
+    const [a, b] = P(pos[0], pos[1]);
+    ctx.fillStyle = m.me ? "#f0c968" : (CLASS[m.cls] || "#d8cfc0"); ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(a, b, m.me ? 7 : 5.5, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.fillText(m.name, a + 8, b + 4);
+  }
+}
+
+function renderAlerts(s){
+  const g = s.group, now = s.last_t || Date.now() / 1000;
+  const loose = g.loose.filter(x => now - x.t < 120);
+  const gb = (s.buffs && s.buffs.group) || [];
+  const ag = s.aggro || {count: 0};
+  $("alerts").innerHTML =
+    (ag.count ? `<div class="alert">🎯 <b>${ag.count}</b> on YOU: ${esc(ag.mobs.join(", "))}</div>` : "") +
+    gb.map(x => `<div class="alert" style="background:#3a3010;border-color:#ffcf5a;color:#ffe08a">✦ ${esc(x.spell)} missing: <b>${esc(x.missing.join(", "))}</b></div>`).join("") +
+    (g.aggro_log || []).filter(x => now - x.t < 600).slice(0, 6).map(x => `<div class="alert">⚠ ${x.kind === "rip"
+        ? `<b>${esc(x.who)}</b> took <b>${esc(x.mob)}</b> off ${esc(x.tank || "the tank")}` : `<b>${esc(x.mob)}</b> went to <b>${esc(x.who)}</b>, never on the tank`}
+        · <b>${esc(x.fault || "?")}'s fault</b>: ${esc(x.why || "")} · ${clock(x.t)}</div>`).join("") +
+    (g.deaths.length ? g.deaths.map(d => `<div class="death"><b>✝ ${esc(d.name)}</b> died ${clock(d.t)}
+        ${d.hits.length ? `<div class="h">${d.hits.map(h => `${esc(h[1])} ${esc(h[2])} ${h[3]}${h[4] != null ? ` → ${h[4]} hp` : ""}`).join(" · ")}</div>` : ""}</div>`).join("")
+      : `<div class="empty">No deaths. Bagem is suspicious.</div>`) +
+    (g.fights.length ? `<div class="dim small" style="margin:1vh 0 .3vh">Recent pulls</div><table><thead><tr><th>When</th><th>Length</th><th>Group dps</th><th>Healed</th><th>Taken</th><th>Deaths</th></tr></thead><tbody>
+      ${g.fights.slice(0, 6).map(f => `<tr><td>${clock(f.start)}</td><td>${f.dur}s</td><td>${fmt(f.dps)}</td><td>${fmt(f.heal)}</td><td>${fmt(f.taken)}</td><td>${f.deaths.length ? esc(f.deaths.join(", ")) : "—"}</td></tr>`).join("")}</tbody></table>` : "");
+}
+
+async function tick(){
+  try {
+    S = await (await fetch("/api/state", {cache: "no-store"})).json();
+  } catch (e) { $("fightPill").textContent = "companion not running"; return; }
+  // each card by itself: one that fails is named in the pill and the others still draw
+  const failed = [];
+  for (const f of [renderTop, renderMembers, renderTriage, renderMeters, renderMap, renderAlerts]) {
+    try { f(S); } catch (e) { console.error(f.name, e); failed.push(f.name.replace(/^render/, "")); }
+  }
+  if (failed.length) $("fightPill").textContent = `⚠ not drawn: ${failed.join(", ")}`;
+}
+tick(); setInterval(tick, 1500);
+addEventListener("resize", () => S && renderMap(S));
+</script>
+</body>
+</html>

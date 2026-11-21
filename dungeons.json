@@ -1,0 +1,1420 @@
+{
+ "_by_map": {
+  "48": {
+   "slug": "blackfathom-deeps",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Ghamoo-ra",
+     "encounter": 2916
+    },
+    {
+     "name": "Lady Sarevess",
+     "encounter": 2915
+    },
+    {
+     "name": "Geilhast",
+     "encounter": 2914
+    },
+    {
+     "name": "Lorgus Jett",
+     "encounter": 2913
+    },
+    {
+     "name": "Old Serra'kis",
+     "encounter": 2912
+    },
+    {
+     "name": "Twilight Lord Kelris",
+     "encounter": 2911
+    },
+    {
+     "name": "Aku'mai",
+     "encounter": 2910
+    }
+   ],
+   "players": 5,
+   "level": "22",
+   "req_level": 15,
+   "zone": "Blackfathom Deeps",
+   "map_id": 48,
+   "entrance": "Entrance: Kalimdor, world coordinates 4249.1, 748.4."
+  },
+  "230": {
+   "slug": "blackrock-depths",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "High Interrogator Gerstahn",
+     "encounter": 227
+    },
+    {
+     "name": "Lord Roccor",
+     "encounter": 228
+    },
+    {
+     "name": "Houndmaster Grebmar",
+     "encounter": 229
+    },
+    {
+     "name": "Ring of Law",
+     "encounter": 230
+    },
+    {
+     "name": "Pyromancer Loregrain",
+     "encounter": 231
+    },
+    {
+     "name": "Lord Incendius",
+     "encounter": 232
+    },
+    {
+     "name": "Warder Stilgiss",
+     "encounter": 233
+    },
+    {
+     "name": "Fineous Darkvire",
+     "encounter": 234
+    },
+    {
+     "name": "Bael'Gar",
+     "encounter": 235
+    },
+    {
+     "name": "General Angerforge",
+     "encounter": 236
+    },
+    {
+     "name": "Golem Lord Argelmach",
+     "encounter": 237
+    },
+    {
+     "name": "Hurley Blackbreath",
+     "encounter": 238
+    },
+    {
+     "name": "Phalanx",
+     "encounter": 239
+    },
+    {
+     "name": "Ribbly Screwspigot",
+     "encounter": 240
+    },
+    {
+     "name": "Plugger Spazzring",
+     "encounter": 241
+    },
+    {
+     "name": "The Vault",
+     "encounter": 2791
+    },
+    {
+     "name": "Ambassador Flamelash",
+     "encounter": 242
+    },
+    {
+     "name": "The Seven",
+     "encounter": 243
+    },
+    {
+     "name": "Magmus",
+     "encounter": 244
+    },
+    {
+     "name": "Princess Moira Bronzebeard",
+     "encounter": 2789
+    },
+    {
+     "name": "Emperor Dagran Thaurissan",
+     "encounter": 2790
+    }
+   ],
+   "players": 5,
+   "level": "48",
+   "req_level": 42,
+   "zone": "Blackrock Depths",
+   "map_id": 230,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -7178.1, -928.6, in"
+  },
+  "229": {
+   "slug": "blackrock-spire",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Highlord Omokk",
+     "encounter": 267
+    },
+    {
+     "name": "Shadow Hunter Vosh'gajin",
+     "encounter": 268
+    },
+    {
+     "name": "War Master Voone",
+     "encounter": 269
+    },
+    {
+     "name": "Mother Smolderweb",
+     "encounter": 270
+    },
+    {
+     "name": "Urok Doomhowl",
+     "encounter": 271
+    },
+    {
+     "name": "Quartermaster Zigris",
+     "encounter": 272
+    },
+    {
+     "name": "Halycon",
+     "encounter": 274
+    },
+    {
+     "name": "Gizrul the Slavener",
+     "encounter": 273
+    },
+    {
+     "name": "Overlord Wyrmthalak",
+     "encounter": 275
+    },
+    {
+     "name": "Pyroguard Emberseer",
+     "encounter": 3062
+    },
+    {
+     "name": "Warchief Rend Blackhand",
+     "encounter": 3063
+    },
+    {
+     "name": "The Beast",
+     "encounter": 3068
+    },
+    {
+     "name": "General Drakkisath",
+     "encounter": 3069
+    },
+    {
+     "name": "Lord Valthalak",
+     "encounter": 3070
+    }
+   ],
+   "players": 10,
+   "level": "53",
+   "req_level": 48,
+   "zone": "Blackrock Spire",
+   "map_id": 229,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -7522.5, -1233, in"
+  },
+  "2959": {
+   "slug": "city-of-dalaran",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Arcane Anomaly",
+     "encounter": 3298
+    },
+    {
+     "name": "Fel Ancient",
+     "encounter": 3299
+    },
+    {
+     "name": "Mana Devourer",
+     "encounter": 3300
+    },
+    {
+     "name": "Mana Elemental",
+     "encounter": 3301
+    },
+    {
+     "name": "Unstable Sentinel",
+     "encounter": 3302
+    },
+    {
+     "name": "Shade of the Archmage",
+     "encounter": 3303
+    },
+    {
+     "name": "Lyn the Ignored",
+     "encounter": 3310
+    },
+    {
+     "name": "Atrexis the Grave Knight",
+     "encounter": 3311
+    },
+    {
+     "name": "Mana Wraith",
+     "encounter": 3312
+    }
+   ],
+   "players": 5,
+   "level": "28",
+   "zone": "City of Dalaran",
+   "map_id": 2959,
+   "entrance": "Entrance: the map row has no entrance coordinates in build 1.60.1.70205."
+  },
+  "36": {
+   "slug": "deadmines",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Rhahk'Zor",
+     "encounter": 2741
+    },
+    {
+     "name": "Sneed",
+     "encounter": 2742
+    },
+    {
+     "name": "Miner Johnson",
+     "encounter": 3676
+    },
+    {
+     "name": "Gilnid",
+     "encounter": 2743
+    },
+    {
+     "name": "Captain Greenskin",
+     "encounter": 2744
+    },
+    {
+     "name": "Mr. Smite",
+     "encounter": 2745
+    },
+    {
+     "name": "Cookie",
+     "encounter": 2746
+    },
+    {
+     "name": "Edwin VanCleef",
+     "encounter": 2747
+    }
+   ],
+   "players": 5,
+   "level": "16",
+   "req_level": 10,
+   "zone": "The Deadmines",
+   "map_id": 36,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -11207.8, 1681.2, in"
+  },
+  "429": {
+   "slug": "dire-maul",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Zevrim Thornhoof",
+     "encounter": 343
+    },
+    {
+     "name": "Hydrospawn",
+     "encounter": 344
+    },
+    {
+     "name": "Lethtendris",
+     "encounter": 345
+    },
+    {
+     "name": "Pusillin",
+     "encounter": 2792
+    },
+    {
+     "name": "Alzzin the Wildshaper",
+     "encounter": 346
+    },
+    {
+     "name": "Tendris Warpwood",
+     "encounter": 350
+    },
+    {
+     "name": "Illyanna Ravenoak",
+     "encounter": 347
+    },
+    {
+     "name": "Magister Kalendris",
+     "encounter": 348
+    },
+    {
+     "name": "Immol'thar",
+     "encounter": 349
+    },
+    {
+     "name": "Prince Tortheldrin",
+     "encounter": 361
+    },
+    {
+     "name": "Guard Mol'dar",
+     "encounter": 362
+    },
+    {
+     "name": "Stomper Kreeg",
+     "encounter": 363
+    },
+    {
+     "name": "Guard Fengus",
+     "encounter": 364
+    },
+    {
+     "name": "Guard Slip'kik",
+     "encounter": 365
+    },
+    {
+     "name": "Captain Kromcrush",
+     "encounter": 366
+    },
+    {
+     "name": "Cho'Rush the Observer",
+     "encounter": 367
+    },
+    {
+     "name": "King Gordok",
+     "encounter": 368
+    },
+    {
+     "name": "Lord Hel'nurath",
+     "encounter": 2793
+    },
+    {
+     "name": "Tsu'zee",
+     "encounter": 2794
+    }
+   ],
+   "players": 5,
+   "level": "54",
+   "req_level": 31,
+   "zone": "Dire Maul",
+   "map_id": 429,
+   "entrance": "Entrance: Kalimdor, world coordinates -3908, 1130, in"
+  },
+  "2998": {
+   "slug": "excavation-site-wetlands",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Saltspine",
+     "encounter": 3480
+    },
+    {
+     "name": "Shadetooth",
+     "encounter": 3481
+    },
+    {
+     "name": "Highland Horror",
+     "encounter": 3644
+    },
+    {
+     "name": "Relic Guardian",
+     "encounter": 3482
+    }
+   ],
+   "players": 5,
+   "level": "26",
+   "zone": "Excavation Site: Wetlands",
+   "map_id": 2998,
+   "entrance": "Entrance: the map row has no entrance coordinates in build 1.60.1.70205."
+  },
+  "90": {
+   "slug": "gnomeregan",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Grubbis",
+     "encounter": 2768
+    },
+    {
+     "name": "Viscous Fallout",
+     "encounter": 2769
+    },
+    {
+     "name": "Electrocutioner 6000",
+     "encounter": 2770
+    },
+    {
+     "name": "Crowd Pummeler 9-60",
+     "encounter": 2771
+    },
+    {
+     "name": "Mekgineer Thermaplugg",
+     "encounter": 2772
+    }
+   ],
+   "players": 5,
+   "level": "25",
+   "req_level": 19,
+   "zone": "Gnomeregan",
+   "map_id": 90,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -5162.7, 931.6, in"
+  },
+  "349": {
+   "slug": "maraudon",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Noxxion",
+     "encounter": 422
+    },
+    {
+     "name": "Razorlash",
+     "encounter": 423
+    },
+    {
+     "name": "Tinkerer Gizlock",
+     "encounter": 427
+    },
+    {
+     "name": "Lord Vyletongue",
+     "encounter": 424
+    },
+    {
+     "name": "Celebras the Cursed",
+     "encounter": 425
+    },
+    {
+     "name": "Landslide",
+     "encounter": 426
+    },
+    {
+     "name": "Rotgrip",
+     "encounter": 428
+    },
+    {
+     "name": "Princess Theradras",
+     "encounter": 429
+    }
+   ],
+   "players": 5,
+   "level": "42",
+   "req_level": 25,
+   "zone": "Maraudon",
+   "map_id": 349,
+   "entrance": "Entrance: Kalimdor, world coordinates -1432.7, 2925, in"
+  },
+  "389": {
+   "slug": "ragefire-chasm",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Oggleflint",
+     "encounter": 2732
+    },
+    {
+     "name": "Taragaman the Hungerer",
+     "encounter": 2733
+    },
+    {
+     "name": "Jergosh the Invoker",
+     "encounter": 2734
+    },
+    {
+     "name": "Bazzalan",
+     "encounter": 2735
+    }
+   ],
+   "players": 5,
+   "level": "13",
+   "req_level": 10,
+   "zone": "Ragefire Chasm",
+   "map_id": 389,
+   "entrance": "Entrance: Kalimdor, world coordinates 1816.8, -4423.4, in"
+  },
+  "129": {
+   "slug": "razorfen-downs",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Tuten'kash",
+     "encounter": 2780
+    },
+    {
+     "name": "Plaguemaw the Rotting",
+     "encounter": 2781
+    },
+    {
+     "name": "Mordresh Fire Eye",
+     "encounter": 2782
+    },
+    {
+     "name": "Ragglesnout",
+     "encounter": 2783
+    },
+    {
+     "name": "Glutton",
+     "encounter": 2784
+    },
+    {
+     "name": "Amnennar the Coldbringer",
+     "encounter": 2785
+    }
+   ],
+   "players": 5,
+   "level": "34",
+   "req_level": 35,
+   "zone": "Razorfen Downs",
+   "map_id": 129,
+   "entrance": "Entrance: Kalimdor, world coordinates -4662.9, -2535.9."
+  },
+  "47": {
+   "slug": "razorfen-kraul",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Roogug",
+     "encounter": 2773
+    },
+    {
+     "name": "Aggem Thorncurse",
+     "encounter": 2774
+    },
+    {
+     "name": "Death Speaker Jargba",
+     "encounter": 2775
+    },
+    {
+     "name": "Overlord Ramtusk",
+     "encounter": 2776
+    },
+    {
+     "name": "Agathelos the Raging",
+     "encounter": 2777
+    },
+    {
+     "name": "Charlga Razorflank",
+     "encounter": 2778
+    }
+   ],
+   "players": 5,
+   "level": "24",
+   "req_level": 25,
+   "zone": "Razorfen Kraul",
+   "map_id": 47,
+   "entrance": "Entrance: Kalimdor, world coordinates -4459.4, -1660.2."
+  },
+  "2999": {
+   "slug": "ruins-of-lordaeron",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Witherfang",
+     "encounter": 3353
+    },
+    {
+     "name": "The Abandoned",
+     "encounter": 3357
+    },
+    {
+     "name": "The Butcher",
+     "encounter": 3355
+    },
+    {
+     "name": "Rath'mael",
+     "encounter": 3354
+    },
+    {
+     "name": "Lordaeron Captain",
+     "encounter": 3408
+    },
+    {
+     "name": "Viktor the Vile",
+     "encounter": 3411
+    },
+    {
+     "name": "Bjork",
+     "encounter": 3412
+    }
+   ],
+   "players": 5,
+   "level": "15",
+   "zone": "Ruins of Lordaeron",
+   "map_id": 2999,
+   "entrance": "Entrance: the map row has no entrance coordinates in build 1.60.1.70205."
+  },
+  "189": {
+   "slug": "scarlet-monastery",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Interrogator Vishas",
+     "encounter": 444
+    },
+    {
+     "name": "Bloodmage Thalnos",
+     "encounter": 2779
+    },
+    {
+     "name": "Houndmaster Loksey",
+     "encounter": 446
+    },
+    {
+     "name": "Arcanist Doan",
+     "encounter": 447
+    },
+    {
+     "name": "Herod",
+     "encounter": 448
+    },
+    {
+     "name": "High Inquisitor Fairbanks",
+     "encounter": 449
+    },
+    {
+     "name": "High Inquisitor Whitemane",
+     "encounter": 450
+    }
+   ],
+   "players": 5,
+   "level": "30",
+   "req_level": 20,
+   "zone": "Scarlet Monastery",
+   "map_id": 189,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates 2892.2, -811.3."
+  },
+  "289": {
+   "slug": "scholomance",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Kirtonos",
+     "encounter": 2805
+    },
+    {
+     "name": "Jandice Barov",
+     "encounter": 2804
+    },
+    {
+     "name": "Rattlegore",
+     "encounter": 2811
+    },
+    {
+     "name": "Marduk Blackpool",
+     "encounter": 2809
+    },
+    {
+     "name": "Vectus",
+     "encounter": 2813
+    },
+    {
+     "name": "Kormok",
+     "encounter": 3055
+    },
+    {
+     "name": "Ras Frostwhisperer",
+     "encounter": 2810
+    },
+    {
+     "name": "Instructor Malicia",
+     "encounter": 2803
+    },
+    {
+     "name": "Doctor Theolen Krastinov",
+     "encounter": 2802
+    },
+    {
+     "name": "Lorekeeper Polkelt",
+     "encounter": 2808
+    },
+    {
+     "name": "The Ravenian",
+     "encounter": 2812
+    },
+    {
+     "name": "Lord Alexei Barov",
+     "encounter": 2807
+    },
+    {
+     "name": "Lady Illucia Barov",
+     "encounter": 2806
+    },
+    {
+     "name": "Darkmaster Gandling",
+     "encounter": 2801
+    }
+   ],
+   "players": 5,
+   "level": "57",
+   "req_level": 33,
+   "zone": "Scholomance",
+   "map_id": 289,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates 1274.8, -2552.6, in"
+  },
+  "33": {
+   "slug": "shadowfang-keep",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Rethilgore",
+     "encounter": 2748
+    },
+    {
+     "name": "Razorclaw the Butcher",
+     "encounter": 2749
+    },
+    {
+     "name": "Baron Silverlaine",
+     "encounter": 2750
+    },
+    {
+     "name": "Commander Springvale",
+     "encounter": 2751
+    },
+    {
+     "name": "Odo the Blindwatcher",
+     "encounter": 2752
+    },
+    {
+     "name": "Fenrus the Devourer",
+     "encounter": 2753
+    },
+    {
+     "name": "Wolf Master Nandos",
+     "encounter": 2754
+    },
+    {
+     "name": "Archmage Arugal",
+     "encounter": 2755
+    }
+   ],
+   "players": 5,
+   "level": "18",
+   "req_level": 11,
+   "zone": "Shadowfang Keep",
+   "map_id": 33,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -231, 1571.6, in"
+  },
+  "34": {
+   "slug": "stormwind-stockade",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Targorr the Dread",
+     "encounter": 2756
+    },
+    {
+     "name": "Kam Deepfury",
+     "encounter": 2757
+    },
+    {
+     "name": "Hamhock",
+     "encounter": 2758
+    },
+    {
+     "name": "Dextren Ward",
+     "encounter": 2759
+    },
+    {
+     "name": "Bazil Thredd",
+     "encounter": 2760
+    }
+   ],
+   "players": 5,
+   "level": "23",
+   "req_level": 15,
+   "zone": "The Stockade",
+   "map_id": 34,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -8762.4, 848."
+  },
+  "329": {
+   "slug": "stratholme",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Hearthsinger Forresten",
+     "encounter": 473
+    },
+    {
+     "name": "Timmy the Cruel",
+     "encounter": 474
+    },
+    {
+     "name": "Malor the Zealous",
+     "encounter": 476
+    },
+    {
+     "name": "Cannon Master Willey",
+     "encounter": 475
+    },
+    {
+     "name": "Archivist Galford",
+     "encounter": 477
+    },
+    {
+     "name": "Balnazzar",
+     "encounter": 478
+    },
+    {
+     "name": "The Unforgiven",
+     "encounter": 472
+    },
+    {
+     "name": "Baroness Anastari",
+     "encounter": 479
+    },
+    {
+     "name": "Nerub'enkan",
+     "encounter": 480
+    },
+    {
+     "name": "Maleki the Pallid",
+     "encounter": 481
+    },
+    {
+     "name": "Magistrate Barthilas",
+     "encounter": 482
+    },
+    {
+     "name": "Ramstein the Gorger",
+     "encounter": 483
+    },
+    {
+     "name": "Baron Rivendare",
+     "encounter": 484
+    },
+    {
+     "name": "Black Guard Swordsmith",
+     "encounter": 2795
+    },
+    {
+     "name": "Crimson Hammersmith",
+     "encounter": 2796
+    },
+    {
+     "name": "Ezra Grimm",
+     "encounter": 2797
+    },
+    {
+     "name": "Postmaster Malown",
+     "encounter": 2798
+    },
+    {
+     "name": "Skul",
+     "encounter": 2799
+    },
+    {
+     "name": "Stonespine",
+     "encounter": 2800
+    }
+   ],
+   "players": 5,
+   "level": "55",
+   "req_level": 37,
+   "zone": "Stratholme",
+   "map_id": 329,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates 3392.3, -3378.5, in"
+  },
+  "109": {
+   "slug": "sunken-temple",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Atal'alarion",
+     "encounter": 3582
+    },
+    {
+     "name": "Avatar of Hakkar",
+     "encounter": 3583
+    },
+    {
+     "name": "Shade of Eranikus",
+     "encounter": 3584
+    },
+    {
+     "name": "Hazzas",
+     "encounter": 3585
+    },
+    {
+     "name": "Morphaz",
+     "encounter": 3586
+    },
+    {
+     "name": "Weaver",
+     "encounter": 3587
+    },
+    {
+     "name": "Dreamscythe",
+     "encounter": 3588
+    },
+    {
+     "name": "Jammal'an the Prophet",
+     "encounter": 3589
+    }
+   ],
+   "players": 5,
+   "level": "45",
+   "req_level": 45,
+   "zone": "The Temple of Atal'Hakkar",
+   "map_id": 109,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -10170.1, -3996, in"
+  },
+  "3065": {
+   "slug": "the-hall-of-thanes",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Faldrim Anvilmar",
+     "encounter": 3493
+    },
+    {
+     "name": "Infurnus",
+     "encounter": 3495
+    },
+    {
+     "name": "Plunder",
+     "encounter": 3494
+    },
+    {
+     "name": "Durgen Dirgehammer",
+     "encounter": 3496
+    }
+   ],
+   "players": 5,
+   "level": "13",
+   "zone": "The Hall of Thanes",
+   "map_id": 3065,
+   "entrance": "Entrance: the map row has no entrance coordinates in build 1.60.1.70205."
+  },
+  "70": {
+   "slug": "uldaman",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Revelosh",
+     "encounter": 547
+    },
+    {
+     "name": "The Lost Dwarves",
+     "encounter": 548
+    },
+    {
+     "name": "Ironaya",
+     "encounter": 549
+    },
+    {
+     "name": "Obsidian Sentinel",
+     "encounter": 1887
+    },
+    {
+     "name": "Ancient Stone Keeper",
+     "encounter": 551
+    },
+    {
+     "name": "Galgann Firehammer",
+     "encounter": 552
+    },
+    {
+     "name": "Grimlok",
+     "encounter": 553
+    },
+    {
+     "name": "Archaedas",
+     "encounter": 554
+    }
+   ],
+   "players": 5,
+   "level": "35",
+   "req_level": 30,
+   "zone": "Uldaman",
+   "map_id": 70,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -6060.2, -2955, in"
+  },
+  "43": {
+   "slug": "wailing-caverns",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Lady Anacondra",
+     "encounter": 585
+    },
+    {
+     "name": "Lord Cobrahn",
+     "encounter": 586
+    },
+    {
+     "name": "Kresh",
+     "encounter": 587
+    },
+    {
+     "name": "Lord Pythas",
+     "encounter": 588
+    },
+    {
+     "name": "Skum",
+     "encounter": 589
+    },
+    {
+     "name": "Lord Serpentis",
+     "encounter": 590
+    },
+    {
+     "name": "Verdan the Everliving",
+     "encounter": 591
+    },
+    {
+     "name": "Mutanus the Devourer",
+     "encounter": 592
+    }
+   ],
+   "players": 5,
+   "level": "17",
+   "req_level": 10,
+   "zone": "Wailing Caverns",
+   "map_id": 43,
+   "entrance": "Entrance: Kalimdor, world coordinates -751.1, -2209.2, in"
+  },
+  "209": {
+   "slug": "zul-farrak",
+   "kind": "dungeons",
+   "bosses": [
+    {
+     "name": "Hydromancer Velratha",
+     "encounter": 593
+    },
+    {
+     "name": "Gahz'rilla",
+     "encounter": 594
+    },
+    {
+     "name": "Antu'sul",
+     "encounter": 595
+    },
+    {
+     "name": "Theka the Martyr",
+     "encounter": 596
+    },
+    {
+     "name": "Witch Doctor Zum'rah",
+     "encounter": 597
+    },
+    {
+     "name": "Nekrum Gutchewer",
+     "encounter": 598
+    },
+    {
+     "name": "Shadowpriest Sezz'ziz",
+     "encounter": 599
+    },
+    {
+     "name": "Chief Ukorz Sandscalp",
+     "encounter": 600
+    }
+   ],
+   "players": 5,
+   "level": "42",
+   "req_level": 39,
+   "zone": "Zul'Farrak",
+   "map_id": 209,
+   "entrance": "Entrance: Kalimdor, world coordinates -6790.6, -2891.3."
+  },
+  "531": {
+   "slug": "ahn-qiraj-temple",
+   "kind": "raids",
+   "bosses": [
+    {
+     "name": "The Prophet Skeram",
+     "encounter": 709
+    },
+    {
+     "name": "Silithid Royalty",
+     "encounter": 710
+    },
+    {
+     "name": "Battleguard Sartura",
+     "encounter": 711
+    },
+    {
+     "name": "Fankriss the Unyielding",
+     "encounter": 712
+    },
+    {
+     "name": "Viscidus",
+     "encounter": 713
+    },
+    {
+     "name": "Princess Huhuran",
+     "encounter": 714
+    },
+    {
+     "name": "Twin Emperors",
+     "encounter": 715
+    },
+    {
+     "name": "Ouro",
+     "encounter": 716
+    },
+    {
+     "name": "C'thun",
+     "encounter": 717
+    }
+   ],
+   "players": 40,
+   "zone": "Ahn'Qiraj",
+   "map_id": 531,
+   "entrance": "Entrance: Kalimdor, world coordinates -8111.7, 1526.8, in"
+  },
+  "469": {
+   "slug": "blackwing-lair",
+   "kind": "raids",
+   "bosses": [
+    {
+     "name": "Razorgore the Untamed",
+     "encounter": 610
+    },
+    {
+     "name": "Vaelastrasz the Corrupt",
+     "encounter": 611
+    },
+    {
+     "name": "Broodlord Lashlayer",
+     "encounter": 612
+    },
+    {
+     "name": "Firemaw",
+     "encounter": 613
+    },
+    {
+     "name": "Ebonroc",
+     "encounter": 614
+    },
+    {
+     "name": "Flamegor",
+     "encounter": 615
+    },
+    {
+     "name": "Chromaggus",
+     "encounter": 616
+    },
+    {
+     "name": "Nefarian",
+     "encounter": 617
+    }
+   ],
+   "players": 40,
+   "level": "60",
+   "zone": "Blackwing Lair",
+   "map_id": 469,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -7663.4, -1218.7, in"
+  },
+  "409": {
+   "slug": "molten-core",
+   "kind": "raids",
+   "bosses": [
+    {
+     "name": "Lucifron",
+     "encounter": 663
+    },
+    {
+     "name": "Magmadar",
+     "encounter": 664
+    },
+    {
+     "name": "Gehennas",
+     "encounter": 665
+    },
+    {
+     "name": "Garr",
+     "encounter": 666
+    },
+    {
+     "name": "Shazzrah",
+     "encounter": 667
+    },
+    {
+     "name": "Baron Geddon",
+     "encounter": 668
+    },
+    {
+     "name": "Sulfuron Harbinger",
+     "encounter": 669
+    },
+    {
+     "name": "Golemagg the Incinerator",
+     "encounter": 670
+    },
+    {
+     "name": "Majordomo Executus",
+     "encounter": 671
+    },
+    {
+     "name": "Ragnaros",
+     "encounter": 672
+    },
+    {
+     "name": "The Molten Core",
+     "encounter": 3018
+    }
+   ],
+   "players": 40,
+   "level": "60",
+   "req_level": 50,
+   "zone": "Molten Core",
+   "map_id": 409,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -7510.6, -1036.7, in"
+  },
+  "533": {
+   "slug": "naxxramas",
+   "kind": "raids",
+   "bosses": [
+    {
+     "name": "Anub'Rekhan",
+     "encounter": 1107
+    },
+    {
+     "name": "Grand Widow Faerlina",
+     "encounter": 1110
+    },
+    {
+     "name": "Maexxna",
+     "encounter": 1116
+    },
+    {
+     "name": "Noth the Plaguebringer",
+     "encounter": 1117
+    },
+    {
+     "name": "Heigan the Unclean",
+     "encounter": 1112
+    },
+    {
+     "name": "Loatheb",
+     "encounter": 1115
+    },
+    {
+     "name": "Instructor Razuvious",
+     "encounter": 1113
+    },
+    {
+     "name": "Gothik the Harvester",
+     "encounter": 1109
+    },
+    {
+     "name": "The Four Horsemen",
+     "encounter": 1121
+    },
+    {
+     "name": "Patchwerk",
+     "encounter": 1118
+    },
+    {
+     "name": "Grobbulus",
+     "encounter": 1111
+    },
+    {
+     "name": "Gluth",
+     "encounter": 1108
+    },
+    {
+     "name": "Thaddius",
+     "encounter": 1120
+    },
+    {
+     "name": "Sapphiron",
+     "encounter": 1119
+    },
+    {
+     "name": "Kel'Thuzad",
+     "encounter": 1114
+    }
+   ],
+   "players": 40,
+   "zone": "Naxxramas",
+   "map_id": 533,
+   "entrance": "Entrance: the map row has no entrance coordinates in build 1.60.1.70205."
+  },
+  "249": {
+   "slug": "onyxia-s-lair",
+   "kind": "raids",
+   "bosses": [
+    {
+     "name": "Onyxia",
+     "encounter": 1084
+    }
+   ],
+   "players": 40,
+   "level": "60",
+   "zone": "Onyxia's Lair",
+   "map_id": 249,
+   "entrance": "Entrance: Kalimdor, world coordinates -4753.3, -3752.4, in"
+  },
+  "509": {
+   "slug": "ruins-of-ahn-qiraj",
+   "kind": "raids",
+   "bosses": [
+    {
+     "name": "Kurinnaxx",
+     "encounter": 718
+    },
+    {
+     "name": "General Rajaxx",
+     "encounter": 719
+    },
+    {
+     "name": "Moam",
+     "encounter": 720
+    },
+    {
+     "name": "Buru the Gorger",
+     "encounter": 721
+    },
+    {
+     "name": "Ayamiss the Hunter",
+     "encounter": 722
+    },
+    {
+     "name": "Ossirian the Unscarred",
+     "encounter": 723
+    }
+   ],
+   "players": 20,
+   "zone": "Ruins of Ahn'Qiraj",
+   "map_id": 509,
+   "entrance": "Entrance: Kalimdor, world coordinates -8114.5, 1526.4, in"
+  },
+  "309": {
+   "slug": "zul-gurub",
+   "kind": "raids",
+   "bosses": [
+    {
+     "name": "High Priestess Jeklik",
+     "encounter": 785
+    },
+    {
+     "name": "High Priest Venoxis",
+     "encounter": 784
+    },
+    {
+     "name": "High Priestess Mar'li",
+     "encounter": 786
+    },
+    {
+     "name": "Bloodlord Mandokir",
+     "encounter": 787
+    },
+    {
+     "name": "Edge of Madness",
+     "encounter": 788
+    },
+    {
+     "name": "High Priest Thekal",
+     "encounter": 789
+    },
+    {
+     "name": "Gahz'ranka",
+     "encounter": 790
+    },
+    {
+     "name": "High Priestess Arlokk",
+     "encounter": 791
+    },
+    {
+     "name": "Jin'do the Hexxer",
+     "encounter": 792
+    },
+    {
+     "name": "Hakkar",
+     "encounter": 793
+    }
+   ],
+   "players": 20,
+   "level": "60",
+   "zone": "Zul'Gurub",
+   "map_id": 309,
+   "entrance": "Entrance: Eastern Kingdoms, world coordinates -11916.1, -1224.6, in"
+  }
+ },
+ "t": 1791163628.2790341
+}

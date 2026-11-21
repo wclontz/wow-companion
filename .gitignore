@@ -1,0 +1,33 @@
+# Allow-list: everything is ignored unless it is named here, so maps, logs, state, settings, markers,
+# backups and hand backups can never be committed by accident. Keep in step with make_share.py (FILES / DIRS);
+# `python make_share.py --git` checks what is tracked.
+/*
+!/.gitignore
+
+# the program
+!/*.py
+!/autostart.pyw
+!/*.html
+!/*.bat
+!/ocr.ps1
+!/requirements.txt
+!/README.md
+!/SETUP_FOR_CLAUDE.md
+!/LICENSE
+
+# small lists that are the same for everyone (NOT the cached game data: mobdb, itemcache, icons, label_images)
+!/dungeons.json
+!/dungeon_rooms.json
+!/subzones.json
+!/zone_bounds.json
+!/timerfont.json
+!/map_ids.json
+!/label_fixes.json
+!/screen_layout.json
+
+!/addon/
+/addon/CompanionBeacon/*
+!/addon/CompanionBeacon/CompanionBeacon.lua
+!/addon/CompanionBeacon/CompanionBeacon.toc
+
+__pycache__/

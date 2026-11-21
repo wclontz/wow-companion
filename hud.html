@@ -1,0 +1,1172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leveling HUD</title>
+<style>
+:root{
+  --bg:#0b0907; --panel:#15110d; --line:#33291d; --gold:#f0c968; --gold2:#a8843a;
+  --text:#ece4d6; --dim:#8f8473; --hp:#46c957; --mana:#4a86ee; --red:#e9563f;
+  --xp:#b05cf0; --rest:#4fb3e0; --idle:#5a4d3a;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:radial-gradient(ellipse at top,#1b150f 0%,var(--bg) 70%);color:var(--text);
+  font-family:"Segoe UI",system-ui,sans-serif;font-size:1.6vh;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:1.4vh;padding:.9vh 1.6vh;border-bottom:1px solid var(--line)}
+.top .name{font:600 2.8vh Georgia,serif;color:var(--gold)}
+.top .tag{color:var(--dim);font-size:1.6vh}
+.fresh{margin-left:auto;padding:.3vh 1vh;border-radius:2vh;border:1px solid var(--line);color:var(--dim);font-size:1.5vh}
+.fresh.ok{color:#9fe0a8;border-color:#2f5a34} .fresh.warn{color:#ffd27a;border-color:#7a5a20}
+.fresh.dead{color:#fff;background:#6a1c12;border-color:var(--red)}
+.top a{color:var(--gold2);font-size:1.5vh;text-decoration:none}
+.grid{flex:1;display:grid;gap:1.2vh;padding:1.2vh 1.6vh 1.6vh;min-height:0;
+  grid-template-columns:1.15fr 1fr 1fr .95fr;grid-template-rows:minmax(0,1.3fr) minmax(0,.9fr) minmax(0,1fr)}
+.card{background:linear-gradient(180deg,#19140f,#120f0b);border:1px solid var(--line);border-radius:1vh;
+  padding:1.2vh 1.5vh;min-width:0;min-height:0;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.card h3{margin:0 0 .6vh;font-size:1.3vh;font-weight:600;text-transform:uppercase;letter-spacing:.25vh;color:var(--gold2)}
+#lanTag{cursor:pointer;text-decoration:underline dotted}
+#qrBox{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(8,6,4,.82)}
+#qrBox[hidden]{display:none}
+#qrBox .in{background:#19140f;border:1px solid var(--line);border-radius:1.2vh;padding:2.4vh;text-align:center;max-width:90vw}
+#qrBox img{display:block;width:min(46vh,78vw);height:min(46vh,78vw);border-radius:.6vh;background:#fff}
+#qrBox .u{font-size:2.2vh;color:var(--gold);margin-top:1.6vh;user-select:all}
+#qrBox .h{font-size:1.5vh;color:var(--dim);margin-top:.8vh}
+/* a tablet or phone held upright: two columns (one on a phone) and the page scrolls; on its side it is the one-screen HUD */
+@media (orientation:portrait){
+  html,body{height:auto;min-height:100%;overflow:auto}
+  .top{flex-wrap:wrap;row-gap:.6vh}
+  .grid{flex:none;grid-template-columns:1fr 1fr;grid-template-rows:none;grid-auto-rows:40vh}
+  .grid > *{grid-column:auto !important;grid-row:auto !important}
+  .grid > .c2, .grid > .qcol{grid-column:1 / -1 !important}
+}
+@media (orientation:portrait) and (max-width:560px){
+  .grid{grid-template-columns:1fr;grid-auto-rows:44vh}
+}
+.c2{grid-column:span 2}
+.qcol{grid-column:4;grid-row:1 / span 3}
+.mapcard{grid-column:3;grid-row:2 / span 2}
+.mapwrap{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:.6vh;background:#0e0b08}
+.mapwrap img{max-width:100%;max-height:100%;display:block}
+.mapwrap img[src=""], .mapwrap img:not([src]){display:none}
+.mapwrap canvas{position:absolute;left:0;top:0;width:100%;height:100%;flex:none}
+.mapmsg{position:absolute;inset:auto 1vh 1vh 1vh;text-align:center;font-size:1.5vh}
+.qref{margin-left:auto;background:var(--gold2);color:#1a1208;border:0;border-radius:.5vh;padding:.4vh 1.2vh;
+  font-weight:700;font-size:1.4vh;cursor:pointer;letter-spacing:0;text-transform:none}
+.qref:disabled{background:#4a3d25;color:#9a8f7e;cursor:default}
+.qlist{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:.5vh;padding-right:.4vh}
+.q{border:1px solid var(--line);border-radius:.6vh;padding:.7vh .9vh;cursor:pointer;background:#1a1510}
+.q:hover{border-color:var(--gold2);background:#221b13}
+.q.sel{border-color:var(--gold);box-shadow:0 0 1.2vh rgba(240,201,104,.18) inset}
+.q .t{display:flex;gap:.7vh;align-items:baseline;font-size:1.65vh;font-weight:600}
+.q .lv{font-size:1.3vh;font-weight:700;border-radius:.4vh;padding:0 .5vh;color:#111;flex:none}
+.q .d{font-size:1.35vh;color:var(--dim);margin-top:.2vh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q .ok{color:var(--hp);margin-left:auto;font-size:1.4vh}
+.q .st{margin-left:auto;font-size:1.2vh;color:var(--gold2)}
+.ans{flex:none;max-height:45%;overflow:auto;border-top:1px solid var(--line);margin-top:.8vh;padding-top:.8vh;font-size:1.55vh;line-height:1.4}
+.ans h4{margin:0 0 .4vh;font-size:1.8vh;color:var(--gold)}
+.ans a{color:#8fb4ff}
+.ans .body{white-space:pre-wrap}
+.dim{color:var(--dim)} .gold{color:var(--gold)}
+.huge{font-size:7vh;font-weight:700;line-height:1;color:var(--gold);font-variant-numeric:tabular-nums}
+.big{font-size:3.6vh;font-weight:650;line-height:1.05;font-variant-numeric:tabular-nums}
+.mid{font-size:2.2vh;line-height:1.2}
+.small{font-size:1.4vh}
+/* XP ring */
+.xpwrap{flex:1;display:flex;align-items:center;gap:2.4vh;min-height:0}
+.ring{height:100%;max-height:30vh;max-width:48%;aspect-ratio:1;position:relative;flex:none}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .lvl{font-size:2vh;color:var(--dim);letter-spacing:.3vh;text-transform:uppercase}
+.ring .pct{font-size:6vh;font-weight:700;color:var(--xp);line-height:1}
+.xpinfo{display:flex;flex-direction:column;gap:1.2vh;min-width:0}
+.kpis{display:flex;gap:2.4vh;flex-wrap:wrap}
+.kpi .v{font-size:2.8vh;font-weight:650;font-variant-numeric:tabular-nums}
+.kpi .k{font-size:1.3vh;color:var(--dim);text-transform:uppercase;letter-spacing:.1vh}
+/* bars */
+.bar{position:relative;height:3.2vh;border-radius:.6vh;overflow:hidden;background:#241d16;margin:.5vh 0}
+.bar>i{position:absolute;inset:0 auto 0 0;transition:width .5s}
+.bar>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.7vh;font-weight:600;text-shadow:0 1px 3px #000}
+.bar.hp>i{background:linear-gradient(90deg,#2f9a3d,var(--hp))} .bar.hp{background:#132e17}
+.bar.mana>i{background:linear-gradient(90deg,#2d5fc0,var(--mana))} .bar.mana{background:#121f3c}
+.bar.mob>i{background:linear-gradient(90deg,#a8321f,var(--red))} .bar.mob{background:#341510}
+.bar.shield>i{background:rgba(255,255,255,.35)}
+.vs{flex:1;display:grid;grid-template-rows:1fr 1fr;gap:1vh;min-height:0}
+.side .who{display:flex;justify-content:space-between;align-items:baseline}
+.side .who b{font-size:2vh}
+.callout{display:flex;align-items:baseline;gap:1vh;margin-top:.3vh}
+.callout .n{font-size:4.6vh;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+/* ready */
+.ready{flex:1;display:flex;flex-direction:column;justify-content:flex-start;gap:.5vh;min-height:0}
+.verdict{font-size:3.2vh;font-weight:700;letter-spacing:.2vh;line-height:1}
+.ready .bar{height:2.6vh;margin:.3vh 0} .ready .bar>span{font-size:1.5vh}
+.ready #readyWhy{font-size:1.5vh;line-height:1.25}
+.verdict.go{color:var(--hp)} .verdict.wait{color:#ffcf5a} .verdict.stop{color:var(--red)}
+.ready-card-go{box-shadow:inset 0 0 2.5vh rgba(70,201,87,.1)!important}
+.ready-card-wait{box-shadow:inset 0 0 2.5vh rgba(255,207,90,.1)!important}
+.ready-card-stop{box-shadow:inset 0 0 2.5vh rgba(233,86,63,.12)!important}
+canvas{width:100%;flex:1;min-height:0;height:0;display:block}
+.mapfeed canvas{height:100%}
+.under{display:flex;align-items:baseline;gap:.8vh;margin:-.1vh 0 .6vh}
+.under .n{font-size:2.6vh;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.under .t{font-size:1.6vh;color:var(--dim)}
+.live{font-size:1.1vh;font-weight:700;letter-spacing:.15vh;color:#0b0907;background:#9fe0a8;border-radius:.4vh;padding:.1vh .5vh;margin-left:.6vh;vertical-align:.3vh}
+.abar{display:flex;gap:.5vh;margin-top:auto;padding-top:.6vh}
+.abtn{position:relative;flex:1;max-width:4.2vh;aspect-ratio:1;border-radius:.5vh;overflow:hidden;border:1px solid #3a2f22;background:#000}
+.abtn img{width:100%;height:100%;display:block}
+.abtn .ov{position:absolute;inset:0}
+.abtn.cooldown .ov{background:rgba(0,0,0,.72)}
+.abtn.gcd .ov{background:rgba(0,0,0,.35)}
+.abtn.range .ov{background:rgba(220,40,30,.45)}
+.abtn.mana .ov{background:rgba(40,80,230,.5)}
+.abtn.ready{border-color:#7a6a3a}
+.abtn .k{position:absolute;right:.3vh;top:.1vh;font-size:1.1vh;font-weight:700;text-shadow:0 0 2px #000,0 0 2px #000}
+.abtn.cooldown .k::after{content:" CD";color:#ff9a7a}
+.donut{display:flex;gap:2vh;align-items:center;flex:1;min-height:0}
+.donut svg{height:100%;max-height:20vh;max-width:50%;aspect-ratio:1;flex:none}
+.legend div{display:flex;align-items:center;gap:.8vh;font-size:1.6vh;margin:.4vh 0}
+.legend i{width:1.2vh;height:1.2vh;border-radius:.3vh;display:inline-block}
+.tab{cursor:pointer;color:var(--dim);padding-bottom:.2vh;border-bottom:2px solid transparent}
+.tab.on{color:var(--gold2);border-bottom-color:var(--gold2)}
+.sel{margin-left:auto;background:#0f0c09;color:var(--text);border:1px solid var(--line);border-radius:.4vh;font-size:1.4vh;padding:.2vh .6vh;text-transform:none;letter-spacing:0}
+.sel[hidden],.spellbox[hidden],.mobs[hidden]{display:none}
+.spellbox{flex:1;min-height:0;overflow:auto}
+.spellbox table{width:100%;border-collapse:collapse;font-size:1.6vh}
+.spellbox th{color:var(--dim);font-weight:500;text-align:right;padding:.4vh .7vh;border-bottom:1px solid var(--line);white-space:nowrap;font-size:1.3vh;text-transform:uppercase;letter-spacing:.1vh}
+.spellbox td{text-align:right;padding:.5vh .7vh;border-bottom:1px solid #241d15;font-variant-numeric:tabular-nums}
+.spellbox th:first-child,.spellbox td:first-child{text-align:left}
+.spellbox td.best{color:var(--hp);font-weight:700}
+.spellbox tr:hover td{background:#1d1812}
+.vs{grid-template-rows:auto 1fr !important}
+.movesSide{min-height:0;display:flex;flex-direction:column}
+.moves{flex:1;min-height:0;overflow:auto;font-size:1.5vh}
+.mv{display:flex;align-items:baseline;gap:.8vh;padding:.35vh 0;border-bottom:1px solid #241d15}
+.mv .k{font-size:1.1vh;font-weight:700;border-radius:.3vh;padding:0 .4vh;color:#111;flex:none;text-transform:uppercase}
+.mv .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mv .v{font-variant-numeric:tabular-nums;white-space:nowrap}
+.qxp{flex:none;width:28%;min-width:0;overflow:auto;font-size:1.45vh;border-left:1px solid var(--line);padding-left:1.2vh}
+.qxp h4{margin:0 0 .4vh;font-size:1.25vh;text-transform:uppercase;letter-spacing:.2vh;color:var(--gold2)}
+.qxp .r{display:flex;gap:.6vh;align-items:baseline;padding:.25vh 0;border-bottom:1px solid #241d15}
+.qxp .r .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qxp .r b{color:#ffd84a;font-variant-numeric:tabular-nums}
+.healwarn{margin-top:.4vh;padding:.4vh .8vh;border-radius:.5vh;background:#3a1610;border:1px solid var(--red);color:#ffb39e;font-size:1.5vh;font-weight:600}
+.mob .hb{font-size:1.15vh;font-weight:700;color:#ffb39e;background:#3a1610;border:1px solid var(--red);border-radius:.4vh;padding:0 .4vh;margin-left:.4vh}
+.spellbox .note{font-size:1.3vh;color:var(--dim);margin-top:.6vh}
+.mobs{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(22vh,1fr));gap:1vh;min-height:0}
+.mob{background:#1d1712;border:1px solid var(--line);border-radius:.8vh;padding:1vh 1.1vh;display:flex;flex-direction:column;gap:.4vh;min-width:0}
+.mob.hl{border-color:var(--gold2);box-shadow:0 0 1.4vh rgba(240,201,104,.15) inset}
+.mob .nm{font-weight:650;font-size:1.8vh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mob .row{display:flex;justify-content:space-between;font-size:1.5vh}
+.mob .row b{font-variant-numeric:tabular-nums}
+.mob .tl{margin-top:auto;font-size:2.6vh;font-weight:700;color:var(--gold)}
+.mob .tl span{font-size:1.3vh;color:var(--dim);font-weight:400}
+.mapfeed{display:grid;grid-template-rows:minmax(0,1.6fr) minmax(0,1fr);gap:.8vh;flex:1;min-height:0}
+.feed{list-style:none;margin:0;padding:0;overflow:hidden;font-size:1.5vh}
+.feed li{padding:.35vh 0;border-bottom:1px solid #241d15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feed .death{color:var(--red)} .feed .level{color:var(--xp);font-weight:700} .feed .record{color:var(--gold)} .feed .hostile{color:#ff8a6a}
+.alert{margin-left:auto;background:#7a1e14;border:1px solid var(--red);color:#fff;padding:.3vh 1.2vh;
+  border-radius:2vh;font-size:1.5vh;font-weight:700;animation:pulse 1.5s infinite}
+.alert[hidden]{display:none}
+.buffs{display:flex;gap:.6vh;flex-wrap:nowrap;overflow:hidden;max-width:52vh}
+.bpill{padding:.3vh 1vh;border-radius:2vh;font-size:1.45vh;font-weight:600}
+.bpill.missing{background:#4a3410;border:1px solid #ffcf5a;color:#ffe08a}
+.bpill.expiring{border:1px solid #8a7030;color:#ffd84a}
+.alert:not([hidden]) + .fresh{margin-left:0}
+@keyframes pulse{50%{opacity:.6}}
+.setup{position:absolute;left:1vh;right:1vh;bottom:1vh;background:#1d160f;border:1px solid var(--gold2);border-radius:.8vh;
+  padding:1vh 1.2vh;display:flex;flex-wrap:wrap;gap:1vh;align-items:center;font-size:1.5vh;z-index:6;box-shadow:0 0 2vh #000}
+.setup[hidden]{display:none}
+.setup input{width:8vh;padding:.4vh .7vh;background:#0f0c09;border:1px solid var(--line);color:var(--text);border-radius:.4vh;font-size:1.6vh}
+.setup button{padding:.4vh 1.4vh;background:var(--gold2);border:0;border-radius:.4vh;font-weight:700;cursor:pointer;font-size:1.6vh}
+.setup .x{margin-left:auto;cursor:pointer;color:var(--dim);font-size:2vh;line-height:1;padding:0 .4vh}
+.editxp{position:absolute;right:1.2vh;top:1vh;font-size:1.3vh;color:var(--dim);cursor:pointer;text-decoration:underline}
+.pace{margin-top:.6vh;font-size:1.45vh;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="name" id="name">Waiting for the combat log…</span>
+  <span class="tag" id="zone"></span>
+  <span class="tag" id="sess"></span>
+  <span class="alert" id="aggroPill" hidden></span>
+  <span class="buffs" id="buffPills"></span>
+  <span class="alert" id="alert" hidden></span>
+  <span class="alert" id="logsWarn" hidden></span>
+  <span class="fresh" id="fresh">—</span>
+  <span class="tag" id="lanTag" hidden title="Click for a QR code: point a tablet or phone on the same network (Wi-Fi) at it to open the HUD there"></span>
+  <a href="/group">group →</a>
+  <a href="/dungeon">dungeon →</a> <a href="/map">map →</a>
+  <a href="/instance">instance →</a>
+  <a href="/">all the numbers →</a>
+</div>
+
+<div id="qrBox" hidden>
+  <div class="in">
+    <img id="qrImg" alt="QR code for the tablet address">
+    <div class="u" id="qrUrl"></div>
+    <div class="h">Point a tablet or phone's camera at this (same Wi-Fi). Click anywhere to close.</div>
+  </div>
+</div>
+<div class="grid">
+  <!-- XP -->
+  <section class="card">
+    <h3>Experience</h3>
+    <span class="editxp" id="editxp">set level / XP</span>
+    <div class="xpwrap">
+      <div class="ring">
+        <svg viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="44" fill="none" stroke="#2a1840" stroke-width="9"/>
+          <circle id="ringArc" cx="50" cy="50" r="44" fill="none" stroke="url(#xpg)" stroke-width="9" stroke-linecap="round"
+                  stroke-dasharray="276.46" stroke-dashoffset="276.46" style="transition:stroke-dashoffset .8s"/>
+          <defs><linearGradient id="xpg" x1="0" x2="1"><stop offset="0" stop-color="#7a2fc0"/><stop offset="1" stop-color="#d48cff"/></linearGradient></defs>
+        </svg>
+        <div class="in"><div class="lvl" id="lvl">level ?</div><div class="pct" id="pct">—</div><div class="dim small" id="xpnum"></div></div>
+      </div>
+      <div class="xpinfo">
+        <div><div class="huge" id="toLvl">—</div><div class="mid" id="toLvlTxt">kills to level</div></div>
+        <div class="kpis">
+          <div class="kpi"><div class="v" id="xph">—</div><div class="k">kill XP / hour</div></div>
+          <div class="kpi"><div class="v" id="eta">—</div><div class="k">to level</div></div>
+          <div class="kpi"><div class="v" id="kph">—</div><div class="k">kills / hour</div></div>
+        </div>
+        <div class="dim small" id="xpmode"></div>
+        <div class="small" id="gearLine" style="margin-top:.6vh"></div>
+        <div class="small" id="purseLine" style="margin-top:.4vh"></div>
+      </div>
+    </div>
+    <form class="setup" id="setup" hidden>
+      <span id="setupMsg">Your level:</span>
+      <label>Level <input type="number" id="sLevel" min="1" max="60"></label>
+      <label id="sXpWrap">XP <input type="number" id="sXp" min="0"></label>
+      <button>Save</button>
+      <span class="x" id="setupClose" title="close">✕</span>
+    </form>
+  </section>
+
+  <!-- You vs it -->
+  <section class="card">
+    <h3>Your target</h3>
+    <div class="vs">
+      <div class="side">
+        <div class="who"><b id="mobName">—</b><span class="dim" id="mobLvl"></span></div>
+        <div class="bar mob"><i id="mobBar" style="width:0"></i><span id="mobHp">—</span></div>
+        <div class="callout"><span class="n gold" id="hitsKill">—</span><span class="mid" id="hitsKillTxt">hits to kill</span></div>
+        <div class="pace" id="pace" title="Attacks: yours on this mob type vs its attacks on you (misses included), over your fights with it"></div>
+      </div>
+      <div class="side movesSide">
+        <div class="who"><b>Its moves</b><span class="dim small" id="movesNote"></span></div>
+        <div class="moves" id="moves"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Ready to pull -->
+  <section class="card" id="readyCard">
+    <h3>Ready for the next pull? <span class="live" id="liveTag" hidden>LIVE</span></h3>
+    <div class="ready">
+      <div class="verdict" id="verdict">—</div>
+      <div class="bar hp"><i id="hpBar2" style="width:0"></i><span id="hpTxt2">health</span></div>
+      <div class="under"><span class="n" id="hitsFromLast" style="color:var(--hp)">—</span><span class="t" id="hitsFromLastTxt">hits from the last mob</span></div>
+      <div class="bar mana"><i id="manaBar" style="width:0"></i><span id="manaTxt">mana</span></div>
+      <div class="under"><span class="n" id="castsLeft" style="color:#8fb4ff">—</span><span class="t" id="castsLeftTxt">Smites left</span></div>
+      <div id="readyWhy"></div>
+      <div class="abar" id="abar"></div>
+    </div>
+  </section>
+
+  <!-- XP over time + where the time goes -->
+  <section class="card c2">
+    <h3>XP this session <span class="dim" id="xpChartNote" style="text-transform:none;letter-spacing:0"></span></h3>
+    <div style="display:flex;gap:1.6vh;flex:1;min-height:0">
+      <canvas id="xpChart" style="flex:1;height:100%"></canvas>
+      <div class="donut" style="flex:none;width:26%">
+        <svg viewBox="0 0 42 42" id="donut"></svg>
+        <div class="legend">
+          <div><i style="background:var(--red)"></i><span id="tFight">fighting</span></div>
+          <div><i style="background:var(--rest)"></i><span id="tRest">eating/drinking</span></div>
+          <div><i style="background:var(--idle)"></i><span id="tIdle">running around</span></div>
+          <div class="dim small" id="tExtra" style="margin-top:.6vh"></div>
+        </div>
+      </div>
+      <div class="qxp" id="qxp"></div>
+    </div>
+  </section>
+
+  <!-- Live map -->
+  <section class="card mapcard">
+    <h3 style="display:flex;align-items:center;gap:.8vh">Where you are <span class="dim" id="locTxt" style="text-transform:none;letter-spacing:0"></span>
+      <button class="qref" id="renamelbl" title="Area name read wrong? Correct it - every map and future reading use your spelling." style="padding:0 .6vh">✎</button>
+      <button class="qref" id="pathshow" title="Show or hide your path on the map" style="margin-left:auto;padding:0 .6vh;white-space:nowrap">〰 Path</button>
+      <button class="qref" id="pathclear" title="Clear your path - it starts again from where you are" style="padding:0 .6vh;white-space:nowrap">✕ Clear</button>
+      <button class="qref" id="mapping" title="Mapping: you're only walking or flying (no hearth, portals or relogs). Every move then has to continue your path on the world map, so each zone line is placed exactly. Turn it off before you hearth." style="white-space:nowrap">🧭 Mapping</button>
+</h3>
+    <div class="mapwrap" id="mapwrap">
+      <img id="mapimg" alt="">
+      <canvas id="map"></canvas>
+      <div class="mapmsg dim" id="mapmsg"></div>
+    </div>
+  </section>
+
+
+  <!-- Mob cards -->
+  <section class="card c2">
+    <h3 style="display:flex;align-items:center;gap:1vh">
+      <span class="tab on" data-tab="mobs">What you're killing</span><span class="tab" data-tab="spells">Spells</span><span class="tab" data-tab="heals">Healing</span>
+      <span class="dim" id="bestMob" style="text-transform:none;letter-spacing:0"></span>
+      <select id="spellMob" class="sel" hidden></select></h3>
+    <div class="mobs" id="mobs"></div>
+    <div id="spellBox" class="spellbox" hidden></div>
+    <div id="healBox2" class="spellbox" hidden></div>
+  </section>
+
+  <!-- Quests -->
+  <section class="card qcol">
+    <h3 style="display:flex;align-items:center;gap:.8vh">Quests <span class="dim" style="text-transform:none;letter-spacing:0">· click one to look it up</span>
+      <button class="qref" id="qref" title="Read your quest tracker (and the quest log window, if it's open)" style="margin-left:auto">↻ Refresh</button></h3>
+    <div class="dim small" id="qinfo" style="margin:-.2vh 0 .6vh"></div>
+    <div class="qlist" id="qlist"><div class="dim">Press ↻ Refresh to read your quest tracker.</div></div>
+    <div class="ans" id="ans" hidden></div>
+  </section>
+
+
+</div>
+
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n == null || !isFinite(n) ? "—" : Math.round(n).toLocaleString();
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function dur(s){ if (s == null || !isFinite(s)) return "—"; s = Math.max(0, Math.round(s));
+  const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+  return h ? `${h}h ${m}m` : m ? `${m}m ${x}s` : `${x}s`; }
+const clock = t => new Date(t*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+const setBar = (id, v, max) => $(id).style.width = (max ? Math.max(0, Math.min(100, v / max * 100)) : 0) + "%";
+let S = null, setupDismissed = false, setupByUser = false;
+
+$("editxp").onclick = () => { $("setup").hidden = false; setupByUser = true; };
+$("setupClose").onclick = () => { $("setup").hidden = true; setupDismissed = true; setupByUser = false; };
+$("setup").onsubmit = async e => {
+  e.preventDefault();
+  const level = +$("sLevel").value;
+  const xp = +$("sXp").value || 0;
+  if (!level) return;
+  // with the XP bar being read, send how full it is: the companion knows every level's size (the table here stopped at 20)
+  const body = S && S.screen && S.screen.ok ? {level, frac: S.screen.xp} : {level, xp};
+  await fetch("/api/baseline", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  $("setup").hidden = true; setupByUser = false; tick();
+};
+
+function sizeCanvas(cv){
+  const r = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w*r) || cv.height !== Math.round(h*r)) { cv.width = Math.round(w*r); cv.height = Math.round(h*r); }
+  const ctx = cv.getContext("2d"); ctx.setTransform(r,0,0,r,0,0); return [ctx, w, h];
+}
+
+function renderTop(s){
+  $("name").textContent = s.me || "Waiting for the combat log…";
+  $("zone").textContent = s.zone || "";
+  $("sess").textContent = s.first_t ? `playing ${dur(s.sitting_secs)} · ${dur(s.time.active)} today` : "";
+  const f = $("fresh");
+  const fileFresh = s.logs && s.logs.combat_age != null && s.logs.combat_age < 600;   // the log FILE was touched lately
+  if (s.lag == null || s.lag > 600) {
+    if ((fileFresh || (s.logs && s.logs.on_since_login)) && !(s.logs.off || []).length) { f.textContent = "log on · WoW writes it in chunks (after fights)"; f.className = "fresh warn"; }
+    else if (s.lag == null) { f.textContent = "no log data yet · type /combatlog"; f.className = "fresh warn"; }
+    else { f.textContent = `log silent ${dur(s.lag)} · type /combatlog`; f.className = "fresh dead"; }
+  }
+  else { f.textContent = `data ${dur(s.lag)} old`; f.className = "fresh " + (s.lag < 150 ? "ok" : "warn"); }
+  const a = $("alert");
+  a.hidden = !s.hostiles.length;
+  a.textContent = s.hostiles.length ? `⚔ Hostile nearby: ${s.hostiles.join(", ")}` : "";
+}
+
+function renderBuffAggro(s){
+  const b = s.buffs || {mine: []}, a = s.aggro || {count: 0};
+  const short = n => n.replace("Power Word: ", "PW: ");
+  const mm = l => l >= 3600 ? Math.floor(l / 3600) + "h" : l >= 60 ? Math.floor(l / 60) + "m" : l + "s";
+  const flagged = new Set(b.mine.map(x => x.spell));
+  const seenB = new Set();
+  $("buffPills").innerHTML = (b.timers || []).filter(x => !flagged.has(x.name) && x.left != null && !seenB.has(x.name) && seenB.add(x.name))
+      .map(x => `<span class="bpill" style="border:1px solid #3a2f22;color:#d8cfc0">${esc(short(x.name))} ${mm(x.left)}</span>`).join("") + b.mine.map(x => x.state === "missing"
+    ? `<span class="bpill missing">⚠ ${esc(x.spell.replace("Power Word: ", "PW: "))} missing</span>`
+    : `<span class="bpill expiring">⏳ ${esc(short(x.spell))} ${mm(x.left)}</span>`).join("");
+  const p = $("aggroPill");
+  const on = a.count || a.glow;
+  p.hidden = !on;
+  if (on) p.textContent = a.count ? `🎯 AGGRO: ${a.count} on you · ${a.mobs.slice(0, 3).join(", ")}` : "🎯 AGGRO (threat glow)";
+}
+
+function renderXp(s){
+  const x = s.xp;
+  const live = s.screen && s.screen.ok;
+  $("sXpWrap").hidden = live;                       // XP comes from the bar when screen reading works
+  $("setupMsg").textContent = live ? "Your level (XP is read from the bar):" : "Level and XP from the XP bar tooltip:";
+  $("editxp").textContent = live ? "set level" : "set level / XP";
+  if (!x && s.me && !setupDismissed) $("setup").hidden = false;   // first run: need the level once
+  else if (x && !setupByUser) $("setup").hidden = true;
+  if (!x) {
+    $("lvl").textContent = "level ?"; $("pct").textContent = "—"; $("xpnum").textContent = "";
+    $("toLvl").textContent = "—"; $("toLvlTxt").textContent = "set your level and XP to start";
+    $("xpmode").textContent = "";
+    return;
+  }
+  const frac = x.need ? x.xp / x.need : 0;
+  $("ringArc").style.strokeDashoffset = 276.46 * (1 - frac);
+  $("lvl").textContent = `level ${x.level}`;
+  $("pct").textContent = Math.floor(frac * 100) + "%";
+  $("xpnum").innerHTML = `${fmt(x.xp)} / ${fmt(x.need)}` + (x.rested ? `<br><span style="color:#5a8dff" title="rested bonus left: kills give double XP until it's used up">+${fmt(x.rested)} rested</span>` : "");
+  const row = s.last_kill_row;
+  if (row && row.to_level) {
+    $("toLvl").textContent = fmt(row.to_level);
+    $("toLvlTxt").innerHTML = `more <b class="gold">${esc(row.name)}</b>${row.to_level === 1 ? "" : "s"} to level ${x.level + 1}`;
+  } else {
+    $("toLvl").textContent = fmt(x.need - x.xp);
+    $("toLvlTxt").textContent = `XP to level ${x.level + 1}`;
+  }
+  $("xph").textContent = fmt(s.xp_rate);
+  $("eta").textContent = dur(s.eta_secs);
+  $("kph").textContent = fmt(s.kills_per_hour);
+  $("xpmode").textContent = x.source === "screen" ? `live from your XP bar${x.other_xp ? ` · ${fmt(x.other_xp)} XP from quests/other` : ""}`
+    : x.exact ? "exact XP from chat log" : "XP estimated from mob level (game window not visible)";
+  if (!$("sLevel").value) { $("sLevel").value = x.level; $("sXp").value = x.xp; }
+}
+
+const KIND = {melee: ["hit", "#c9b98f"], damage: ["spell", "#ff9a3a"], debuff: ["debuff", "#c77dff"],
+              heal: ["heal", "#46c957"], buff: ["buff", "#5a8dff"], cast: ["cast", "#9a9a9a"]};
+function renderGear(s){
+  // gear score from the add-on's strip: yours, and the team's when you are in a group
+  const g = s.strip && s.strip.gear, el = $("gearLine");
+  if (!g || !g.me) { el.innerHTML = ""; return; }
+  const me = g.me, n = (g.party || []).length;
+  const tip = `item level x quality, summed over your ${me.worn} items` + (me.whole === false ? " (some items not read yet)" : "");
+  let html = `<span title="${esc(tip)}">⚙ gear score <b class="gold">${fmt(me.score)}</b></span>` +
+    ` <span class="dim">· item level ${me.avg}` + (me.empty && me.empty.length ? ` · empty: ${esc(me.empty.join(", "))}` : "") + `</span>`;
+  if (n && g.team) {
+    const miss = g.team.missing || [];
+    html += `<br><span title="the average of everyone whose gear has been read">team <b class="gold">${fmt(g.team.score)}</b></span>` +
+      ` <span class="dim">· item level ${g.team.avg} · ${g.team.of} of ${n + 1}` +
+      (miss.length ? ` · not inspected yet: ${esc(miss.join(", "))}` : "") + `</span>`;
+  }
+  el.innerHTML = html;
+}
+
+function coins(c){
+  const neg = c < 0; c = Math.abs(Math.round(c || 0));
+  const g = Math.floor(c / 10000), sv = Math.floor(c / 100) % 100, k = c % 100;
+  return (neg ? "−" : "") + ((g ? g + "g " : "") + (g || sv ? sv + "s " : "") + (g ? "" : k + "c")).trim();
+}
+function renderPurse(s){
+  // money, bag space and gear wear from the add-on's strip (nothing shown without it)
+  const p = s.strip, el = $("purseLine");
+  if (!p || (p.money == null && !p.bag_all && p.wear == null)) { el.innerHTML = ""; return; }
+  const parts = [];
+  if (p.money != null) {
+    const t = p.money_trend;
+    let h = `💰 <b class="gold">${coins(p.money)}</b>`;
+    if (t && t.net) h += ` <span class="dim" title="since ${clock(t.since)}: looted + sold − spent (a repair or a trainer counts against it)">` +
+      `${t.net > 0 ? "+" : ""}${coins(t.net)}${t.per_hour != null ? ` · ${coins(t.per_hour)}/h` : ""}</span>`;
+    parts.push(h);
+  }
+  if (p.bag_all) {
+    const c = p.bag_free <= 2 ? "#ff6b5a" : p.bag_free <= 5 ? "#ffb84a" : "";
+    parts.push(`<span title="free bag slots"${c ? ` style="color:${c}"` : ""}>🎒 ${p.bag_free} / ${p.bag_all} free${p.bag_free <= 2 ? " ⚠" : ""}</span>`);
+  }
+  if (p.wear != null) {
+    const c = p.wear <= 20 ? "#ff6b5a" : p.wear <= 40 ? "#ffb84a" : "";
+    parts.push(`<span title="your most worn piece of gear: how much is left"${c ? ` style="color:${c}"` : ""}>🔨 ${Math.round(p.wear)}%${p.wear <= 20 ? " repair ⚠" : ""}</span>`);
+  }
+  el.innerHTML = parts.join(` <span class="dim">·</span> `);
+}
+
+function renderVs(s){
+  const t = s.target;
+  const mv = $("moves");
+  if (!t) {
+    $("mobName").textContent = "No target"; $("mobLvl").textContent = "";
+    setBar("mobBar", 0, 1); $("mobHp").textContent = "—";
+    $("hitsKill").textContent = "—"; $("hitsKillTxt").textContent = "hits to kill"; $("pace").innerHTML = "";
+    mv.innerHTML = ""; $("movesNote").textContent = "";
+    return;
+  }
+  const RX = {friendly: ["Friendly NPC", "#46c957"], neutral: ["Neutral", "#ffd84a"], hostile: ["Hostile", "#e9563f"],
+              player: ["Player", "#5a8dff"]}[t.reaction] || null;
+  $("mobName").innerHTML = esc(t.name) + (t.heals ? `<div class="healwarn">⚠ Heals: ${healWarn(t.heals)}. Burst it down or interrupt.</div>` : "");
+  $("mobLvl").innerHTML = (RX ? `<b style="color:${RX[1]}">${RX[0]}</b> · ` : "") + (t.level ? `level ${esc(t.level)} ` : "") + '<span class="live">LIVE</span>';
+  setBar("mobBar", t.frac, 1);
+  $("mobHp").textContent = t.maxhp ? `${fmt(t.hp)} / ${fmt(t.maxhp)}` : `${Math.round(t.frac * 100)}%`;
+  const notFight = t.reaction === "friendly" || t.reaction === "player";
+  $("hitsKill").textContent = notFight ? "—" : (t.hits_left ?? "—");
+  $("hitsKillTxt").textContent = notFight ? (t.reaction === "player" ? "another player, not a fight" : "friendly, not a fight")
+    : t.best_spell ? `${t.best_spell}${t.hits_left === 1 ? "" : "s"} to kill · avg ${fmt(t.best_avg)}` : "new mob: hit it a few times to learn its numbers";
+  // attack pace: you : it, and the race to the kill
+  const pc = t.pace, rc = t.race;
+  $("pace").innerHTML = notFight || !pc ? (notFight ? "" : `<span class="dim small">Pace: needs a fight or two with it</span>`)
+    : `<div><span class="dim">Pace</span> <b>1 : ${pc.ratio.toFixed(1)}</b>${pc.stale_lvl ? ` <span class="small" style="color:#ff9a3a">(${staleTxt(pc.stale_lvl)})</span>` : ""} <span class="dim small">· it attacks ${pc.ratio >= 1.05 ? pc.ratio.toFixed(1) + "× per attack of yours" : pc.ratio <= 0.95 ? "less often than you" : "as often as you"}</span></div>`
+      + (rc ? `<div class="small">You need <b>${rc.my_attacks}</b> · it gets <b style="color:${(rc.pct_of_hp ?? 0) >= 80 ? "#e9563f" : (rc.pct_of_hp ?? 0) >= 50 ? "#ff9a3a" : "#46c957"}">${rc.their_attacks}</b>`
+        + (rc.dmg != null ? ` ≈ ${fmt(rc.dmg)} dmg${rc.pct_of_hp != null ? ` (${rc.pct_of_hp}% of your HP)` : ""}${rc.hp_after != null && rc.hp_after <= 0 ? ` <b style="color:#e9563f">— you lose this race</b>` : ""}` : "") + `</div>` : "");
+  const mi = t.miss;
+  if (!notFight && mi && (mi.mine != null || mi.theirs != null)) {
+    $("pace").innerHTML += `<div class="small"><span class="dim">Miss chance</span> you <b>${mi.mine != null ? mi.mine + "%" : "—"}</b>`
+      + `<span class="dim"> (${mi.mine_n})</span> · it <b>${mi.theirs != null ? mi.theirs + "%" : "—"}</b><span class="dim"> (${mi.theirs_n})</span>`
+      + `${mi.stale_lvl ? ` <span style="color:#ff9a3a">(${staleTxt(mi.stale_lvl)})</span>` : ""}</div>`;
+  }
+  const inf = t.info;
+  const infoLine = inf && !inf.error ? [inf.rank ? `<b style="color:${inf.rank.includes("Rare") ? "#c0c0ff" : "#ffcf5a"}">${esc(inf.rank)}</b>` : "",
+      inf.level || inf.level_range ? `level ${esc(inf.level || inf.level_range)}` : "", esc(inf.type || ""), inf.title ? `&lt;${esc(inf.title)}&gt;` : ""].filter(Boolean).join(" · ") : "";
+  $("mobLvl").innerHTML = (RX ? `<b style="color:${RX[1]}">${RX[0]}</b> · ` : "") + (infoLine || (t.level ? `level ${esc(t.level)} ` : "")) + ' <span class="live">LIVE</span>';
+  const moves = t.moves || [];
+  $("movesNote").textContent = moves.length ? ` · from ${moves.reduce((a, m) => a + m.n, 0)} logged uses` : "";
+  mv.innerHTML = notFight ? "" : moves.length ? moves.map(m => {
+    const [label, col] = KIND[m.kind] || [m.kind, "#999"];
+    const val = m.kind === "melee" || m.kind === "damage"
+      ? `<b>${m.avg ?? "—"}</b> avg · ${m.max ?? "—"} max${m.crit ? ` · ${m.crit}% crit` : ""}`
+      : m.kind === "heal" ? `<b>+${m.avg ?? "?"}</b> HP`
+      : m.kind === "debuff" ? (m.avg ? `<b>${m.avg}</b> dmg` : "on you") : m.kind === "buff" ? "on itself" : "";
+    return `<div class="mv"><span class="k" style="background:${col}">${label}</span><span class="nm">${esc(m.spell)}</span>
+      <span class="v">${val}</span><span class="dim small">×${m.n}</span></div>`;
+  }).join("") : `<div class="dim">Not fought near you yet, so no moves logged.${inf && inf.drops && inf.drops.length ? ` <br>Drops: ${esc(inf.drops.map(d => d.item + (d.rate ? " " + d.rate : "")).join(", "))}${inf.coins ? " · " + esc(inf.coins) : ""}` : ""}${inf && inf.spawns && inf.spawns.length ? `<br>${inf.spawns.length} known spawn points` : ""}${!inf ? "<br>Looking it up…" : inf.error ? "<br>" + esc(inf.error) : ""}</div>`;
+}
+
+function spellCost(s, pred){
+  const sp = s.spells.filter(r => r.casts && r.mana && pred(r)).sort((a, b) => b.casts - a.casts)[0];
+  return sp ? {name: sp.name, cost: sp.mana / sp.casts} : null;
+}
+
+function renderUnder(s){
+  const p = s.player;
+  // health: how many average hits from the last mob type you fought
+  const lastRow = s.target && s.target.their_avg ? s.target : s.last_kill_row;   // (a friendly target has no hits: use the last mob)
+  if (lastRow && lastRow.their_avg && p.hp != null) {
+    $("hitsFromLast").textContent = Math.floor(p.hp / lastRow.their_avg);
+    $("hitsFromLastTxt").textContent = `hits from ${lastRow.name} (avg ${lastRow.their_avg})`;
+  } else { $("hitsFromLast").textContent = "—"; $("hitsFromLastTxt").textContent = "hits from the last mob"; }
+  // mana: how many of your main damage spell (Smite) and main heal you can still cast
+  const dmg = spellCost(s, r => r.dmg > 0), heal = spellCost(s, r => r.heal > 0 && r.dmg === 0);
+  if (dmg && p.power != null) {
+    const n = Math.floor(p.power / dmg.cost);
+    $("castsLeft").textContent = n;
+    $("castsLeftTxt").innerHTML = `${esc(dmg.name)}${n === 1 ? "" : "s"} left` +
+      (heal ? ` · <b style="color:#8fb4ff">${Math.floor(p.power / heal.cost)}</b> ${esc(heal.name)}${Math.floor(p.power / heal.cost) === 1 ? "" : "s"}` : "");
+  } else { $("castsLeft").textContent = "—"; }
+  $("liveTag").hidden = !p.live;
+}
+
+function renderABar(s){
+  const sc = s.screen, el = $("abar");
+  if (!sc || !sc.ok || !sc.buttons) { el.innerHTML = sc && sc.reason ? `<span class="dim small">${esc(sc.reason)}</span>` : ""; return; }
+  el.innerHTML = sc.buttons.filter(b => b.state !== "empty").map(b => `
+    <div class="abtn ${b.state}" title="${b.key}: ${b.state}">
+      ${sc.icons && sc.icons[b.slot - 1] ? `<img src="${sc.icons[b.slot - 1]}" alt="">` : ""}
+      <div class="ov"></div><span class="k">${esc(b.key)}</span></div>`).join("");
+}
+
+function applyReadyTint(state){
+  const card = $("readyCard");
+  if (!card) return;
+  card.classList.remove("ready-card-go", "ready-card-wait", "ready-card-stop");
+  if (state) card.classList.add("ready-card-" + state);
+}
+
+function renderReady(s){
+  const p = s.player;
+  renderUnder(s); renderABar(s);
+  setBar("hpBar2", p.hp, p.maxhp); $("hpTxt2").textContent = p.maxhp ? `health ${Math.round(p.hp / p.maxhp * 100)}%` : "health";
+  setBar("manaBar", p.power, p.maxpower); $("manaTxt").textContent = p.maxpower ? `mana ${Math.round(p.power / p.maxpower * 100)}%` : "mana";
+  const v = $("verdict"), why = $("readyWhy");
+  if (!p.maxhp) { v.textContent = "—"; v.className = "verdict"; why.textContent = ""; return; }
+  const fights = s.fights.filter(f => f.kills);
+  const takenPer = fights.length ? fights.reduce((a, f) => a + f.taken, 0) / fights.reduce((a, f) => a + f.kills, 0) : null;
+  const manaKills = s.mana_per_kill && p.maxpower ? p.power / s.mana_per_kill : null;
+  const hpKills = takenPer ? p.hp / takenPer : null;
+  const kills = Math.min(manaKills ?? Infinity, hpKills ?? Infinity);
+  if (!isFinite(kills)) { v.textContent = "Go"; v.className = "verdict go"; applyReadyTint("go"); why.textContent = "Not enough fights yet to judge."; return; }
+  const limit = (manaKills ?? Infinity) <= (hpKills ?? Infinity) ? "mana" : "health";
+  let st;
+  if (kills >= 1.3) { v.textContent = "GO"; v.className = "verdict go"; st = "go"; }
+  else if (kills >= 0.8) { v.textContent = "RISKY"; v.className = "verdict wait"; st = "wait"; }
+  else { v.textContent = limit === "mana" ? "DRINK" : "EAT / HEAL"; v.className = "verdict stop"; st = "stop"; }
+  applyReadyTint(st);
+  why.innerHTML = `Enough for about <b>${kills.toFixed(1)}</b> kill${kills >= 0.95 && kills < 1.05 ? "" : "s"} · ${limit} runs out first
+    <div class="dim small">Average per kill: ${fmt(s.mana_per_kill)} mana${takenPer ? `, ${fmt(takenPer)} damage taken` : ""}</div>`;
+}
+
+function renderXpChart(s){
+  const [ctx, w, h] = sizeCanvas($("xpChart"));
+  ctx.clearRect(0, 0, w, h);
+  const x = s.xp, ser = x && x.series || [];
+  const pad = {l: 46, r: 12, t: 10, b: 22};
+  const t0 = s.sitting_t || s.first_t || 0, t1 = Math.max(s.last_t || 0, t0 + 60);   // this sitting only
+  // kill ticks along the bottom
+  const X = t => pad.l + (t - t0) / (t1 - t0) * (w - pad.l - pad.r);
+  ctx.fillStyle = "rgba(233,86,63,.65)";
+  ctx.fillStyle = "rgba(255,216,74,.95)";
+  for (const r of (s.xp && s.xp.other_gains) || []) if (r.t >= t0 && r.xp >= 40) ctx.fillRect(X(r.t) - 1.5, h - pad.b + 2, 3, 11);
+  ctx.fillStyle = "rgba(233,86,63,.65)";
+  for (const kt of s.kill_times) if (kt >= t0) ctx.fillRect(X(kt) - 1, h - pad.b + 4, 2, 7);
+  ctx.fillStyle = "#8f8473"; ctx.font = `${Math.max(10, h * .07)}px Segoe UI`;
+  ctx.fillText(clock(t0), pad.l, h - 2);
+  const tr = clock(t1); ctx.fillText(tr, w - pad.r - ctx.measureText(tr).width, h - 2);
+  if (ser.length < 2) {
+    $("xpChartNote").textContent = x ? "· kills will draw the line" : "· set your level and XP to start the XP line";
+    return;
+  }
+  const maxV = Math.max(10, ser[ser.length - 1][1]);
+  const Y = v => h - pad.b - v / maxV * (h - pad.t - pad.b);
+  ctx.strokeStyle = "#2b231a"; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const v = maxV * i / 4, y = Y(v); ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    ctx.fillStyle = "#8f8473"; ctx.fillText(fmt(v), 4, y + 4); }
+  const grad = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
+  grad.addColorStop(0, "rgba(176,92,240,.55)"); grad.addColorStop(0.5, "rgba(140,60,210,.2)"); grad.addColorStop(1, "rgba(176,92,240,0)");
+  ctx.beginPath(); ctx.moveTo(X(Math.max(ser[0][0], t0)), Y(0));
+  let last = 0;
+  for (const [t, v] of ser) { ctx.lineTo(X(Math.max(t, t0)), Y(last)); ctx.lineTo(X(Math.max(t, t0)), Y(v)); last = v; }
+  ctx.lineTo(X(t1), Y(last)); ctx.lineTo(X(t1), Y(0)); ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+  // the line: purple for kill XP, orange where the rise came from a quest turn-in
+  const questT = new Set(((s.xp && s.xp.other_gains) || []).filter(r => r.xp >= 40).map(r => r.t));
+  ctx.lineWidth = 2.2; last = 0;
+  ctx.shadowBlur = 6; ctx.shadowColor = "rgba(176,92,240,.7)";
+  let px = X(Math.max(ser[0][0], t0)), py = Y(0);
+  for (const [t, v] of ser) {
+    const x = X(Math.max(t, t0));
+    ctx.strokeStyle = "#c98cff"; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, Y(last)); ctx.stroke();
+    ctx.strokeStyle = questT.has(t) ? "#ff9a3a" : "#c98cff";
+    ctx.lineWidth = questT.has(t) ? 3.2 : 2.2;
+    ctx.beginPath(); ctx.moveTo(x, Y(last)); ctx.lineTo(x, Y(v)); ctx.stroke();
+    ctx.lineWidth = 2.2; px = x; py = Y(v); last = v;
+  }
+  ctx.strokeStyle = "#c98cff"; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(X(t1), Y(last)); ctx.stroke();
+  ctx.shadowBlur = 0;
+  $("xpChartNote").textContent = `· ${fmt(last)} XP gained · orange = quest XP · red ticks kills`;
+}
+
+function renderDonut(s){
+  const t = s.time, tot = Math.max(1, t.active);
+  const parts = [[t.combat, "var(--red)"], [t.rest, "var(--rest)"], [t.idle, "var(--idle)"]];
+  let off = 25, html = `<circle cx="21" cy="21" r="15.9" fill="none" stroke="#221b14" stroke-width="5.5"/>`;
+  for (const [v, c] of parts) {
+    const p = v / tot * 100;
+    if (p > 0.3) html += `<circle cx="21" cy="21" r="15.9" fill="none" stroke="${c}" stroke-width="5.5" stroke-dasharray="${p} ${100 - p}" stroke-dashoffset="${off}"/>`;
+    off -= p;
+  }
+  html += `<text x="21" y="20.5" text-anchor="middle" fill="#f0c968" font-size="6" font-weight="700">${Math.round(t.combat / tot * 100)}%</text>
+           <text x="21" y="26" text-anchor="middle" fill="#8f8473" font-size="2.8">fighting</text>`;
+  $("donut").innerHTML = html;
+  $("tFight").textContent = `fighting ${dur(t.combat)}`;
+  $("tRest").textContent = `eating/drinking ${dur(t.rest)}`;
+  $("tIdle").textContent = `running around ${dur(t.idle)}`;
+  $("tExtra").innerHTML = `${s.avg_fight ? `avg fight ${s.avg_fight.toFixed(0)}s` : ""}${s.kills_per_rest ? ` · ${s.kills_per_rest.toFixed(1)} kills per drink` : ""}<br>${fmt(s.distance)} yards walked`;
+}
+
+let mobTab = "mobs", spellMobPick = null;
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+  mobTab = t.dataset.tab;
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
+  if (S) { renderMobs(S); renderSpells(S); renderHeals(S); }
+}));
+$("spellMob").addEventListener("change", e => { spellMobPick = e.target.value; if (S) renderSpells(S); });
+
+function renderSpells(s){
+  const box = $("spellBox"), sel = $("spellMob");
+  const on = mobTab === "spells";
+  box.hidden = !on; sel.hidden = !on; $("mobs").hidden = mobTab !== "mobs"; $("bestMob").hidden = mobTab !== "mobs";
+  if (!on) return;
+  const eff = s.spell_eff || [];
+  // mobs you've used spells on, most recently fought first
+  const lastBy = Object.fromEntries((s.mobs || []).map(m => [m.name, m.last || 0]));
+  const mobs = [...new Set(eff.flatMap(r => Object.keys(r.by_mob)))].sort((a, b) => (lastBy[b] || 0) - (lastBy[a] || 0));
+  const tgt = s.target && s.target.name;
+  const auto = mobs.includes(tgt) ? tgt : (mobs[0] || "__all");
+  const pick = spellMobPick && (spellMobPick === "__all" || mobs.includes(spellMobPick)) ? spellMobPick : auto;
+  const opts = [["__all", "all mobs"], ...mobs.map(m => [m, m])];
+  const html = opts.map(([v, l]) => `<option value="${esc(v)}" ${v === pick ? "selected" : ""}>${esc(l)}${v === auto && !spellMobPick ? " (current)" : ""}</option>`).join("");
+  if (sel.innerHTML !== html && document.activeElement !== sel) sel.innerHTML = html;
+  const rows = eff.map(r => {
+    const m = pick === "__all" ? {casts: r.casts, dmg_per_cast: r.dmg_per_cast, dmg_per_mana: r.dmg_per_mana, dps_casting: r.dps_casting}
+                               : r.by_mob[pick];
+    return m && m.casts ? {...r, ...m} : null;
+  }).filter(Boolean);
+  if (!rows.length) { box.innerHTML = `<div class="dim mid">No damage spells logged${pick !== "__all" ? " on " + esc(pick) : ""} yet.</div>`; return; }
+  const best = k => Math.max(...rows.filter(r => r.spell !== "Melee").map(r => r[k] || 0));
+  const bm = best("dmg_per_mana"), bd = best("dps_casting");
+  box.innerHTML = `<table><thead><tr><th>Spell</th><th>Casts</th><th>Cast time</th><th>Mana</th><th>Dmg / cast</th><th>Dmg / mana</th><th>Dmg / sec</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${esc(r.spell)}</td><td>${r.casts}</td>
+      <td>${r.spell === "Melee" ? "swing" : r.instant ? "instant" : r.cast_time.toFixed(2) + "s"}</td>
+      <td>${r.mana ? fmt(r.mana) : "—"}</td><td>${r.dmg_per_cast}</td>
+      <td class="${r.dmg_per_mana && r.dmg_per_mana === bm ? "best" : ""}">${r.dmg_per_mana ?? "—"}</td>
+      <td class="${r.spell !== "Melee" && r.dps_casting === bd ? "best" : ""}">${r.dps_casting}</td></tr>`).join("")}
+  </tbody></table>
+  <div class="note">Cast time is what it really took (getting hit pushes casts back). Instants count the 1.5 s global cooldown. DoT ticks count toward the cast that applied them. Green = best on that mob.</div>`;
+}
+
+function renderHeals(s){
+  const box = $("healBox2"), on = mobTab === "heals";
+  box.hidden = !on;
+  if (!on) return;
+  const rows = s.heal_eff || [];
+  if (!rows.length) { box.innerHTML = `<div class="dim mid">No heals logged yet.</div>`; return; }
+  const best = k => Math.max(...rows.map(r => r[k] || 0));
+  const bm = best("heal_per_mana"), bh = best("hps_casting");
+  box.innerHTML = `<table><thead><tr><th>Spell</th><th>Casts</th><th>Cast time</th><th>Mana</th><th>Heal / cast</th><th>Overheal</th><th>Heal / mana</th><th>Heal / sec</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${esc(r.spell)}</td><td>${r.casts}</td>
+      <td>${r.instant ? "instant" : r.cast_time.toFixed(2) + "s"}</td><td>${r.mana ? fmt(r.mana) : "—"}</td>
+      <td>${r.heal_per_cast}</td><td style="color:${r.overheal > 40 ? "var(--red)" : "inherit"}">${r.overheal}%</td>
+      <td class="${r.heal_per_mana === bm ? "best" : ""}">${r.heal_per_mana ?? "—"}</td>
+      <td class="${r.hps_casting === bh ? "best" : ""}">${r.hps_casting}</td></tr>`).join("")}
+  </tbody></table>
+  <div class="note">Heal / cast counts only healing that landed (overheal excluded); shields count what they actually absorbed. Instants count the 1.5 s global cooldown. Green = best.</div>`;
+}
+
+function renderQuestXp(s){
+  const x = s.xp, el = $("qxp");
+  const g = (x && x.other_gains) || [];
+  if (!x || x.source !== "screen") { el.innerHTML = `<h4>Quest XP</h4><div class="dim">Needs the XP bar on screen.</div>`; return; }
+  const total = g.reduce((a, r) => a + r.xp, 0), kills = Math.max(0, (x.gained || 0) - total);
+  el.innerHTML = `<h4>Quest XP · ${fmt(total)}</h4>
+    <div class="dim small" style="margin-bottom:.4vh">${x.gained ? Math.round(total / x.gained * 100) : 0}% of this session's XP · kills ${fmt(kills)}</div>
+    ${g.length ? g.slice().reverse().map(r => `<div class="r"><span class="n" title="${esc(r.name || "")}">${esc(r.name || (r.xp < 40 ? "exploration / other" : "quest"))}</span><b>+${fmt(r.xp)}</b><span class="dim small">${clock(r.t)}</span></div>`).join("")
+      : `<div class="dim">None yet this session.</div>`}`;
+}
+
+function healWarn(h){
+  if (!h || !h.length) return "";
+  return h.map(x => `${esc(x.spell)}${x.avg ? ` (~${fmt(x.avg)} HP)` : ""}${x.n > 1 ? ` · seen ${x.n}×` : ""}`).join(", ");
+}
+
+// older fights: "lvl 15 data", or "below lvl 17" for fights from before levels were kept
+function staleTxt(v){ return String(v).startsWith("<") ? `below lvl ${String(v).slice(1)}` : `lvl ${v} data`; }
+
+function renderMobs(s){
+  const lastName = s.last_kill && s.last_kill.name;
+  // the 4 mob types you fought most recently, newest first
+  const rows = s.mobs.filter(m => m.kills || m.their_avg || m.best_avg).sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
+  const best = s.mobs.filter(m => m.xp_per_min && m.kills >= 2).sort((a, b) => b.xp_per_min - a.xp_per_min)[0];
+  $("bestMob").textContent = best ? `· best XP for your time: ${best.name} (${fmt(best.xp_per_min)} XP/min)` : "";
+  $("mobs").innerHTML = rows.length ? rows.map(m => `
+    <div class="mob ${m.name === lastName ? "hl" : ""}">
+      <div class="nm" title="${esc(m.name)}${(s.mob_heals || {})[m.name] ? " heals: " + esc(healWarn(s.mob_heals[m.name])) : ""}">${esc(m.name)}${(s.mob_heals || {})[m.name] ? '<span class="hb">heals</span>' : ""}</div>
+      <div class="row"><span class="dim">level</span><b>${esc(m.levels)}</b></div>
+      <div class="row"><span class="dim">killed</span><b>${m.kills}</b></div>
+      <div class="row"><span class="dim">${esc(m.best_spell || "hits")} to kill</span><b>${m.hits_to_kill ?? "—"}</b></div>
+      <div class="row"><span class="dim">its hits you can take</span><b>${m.hits_to_die ?? "—"}</b></div>
+      <div class="row" title="your attacks : its attacks on you, averaged over your fights with this mob"><span class="dim">pace you : it</span><b>${m.pace ? "1 : " + m.pace.ratio.toFixed(1) + (m.pace.stale_lvl ? ` <span style="color:#ff9a3a;font-size:.8em">${String(m.pace.stale_lvl).startsWith("<") ? m.pace.stale_lvl : "L" + m.pace.stale_lvl}</span>` : "") : "—"}</b></div>
+      <div class="row" title="its attacks per kill, and what they cost you on average"><span class="dim">it attacks per kill</span><b>${m.race ? m.race.their_attacks + (m.race.pct_of_hp != null ? ` (${m.race.pct_of_hp}%)` : "") : "—"}</b></div>
+      <div class="row" title="miss chance (miss/dodge/parry/block/resist): yours on it · its on you"><span class="dim">misses you · it</span><b>${m.miss && m.miss.mine != null ? m.miss.mine + "%" : "—"} · ${m.miss && m.miss.theirs != null ? m.miss.theirs + "%" : "—"}</b></div>
+      <div class="row"><span class="dim">XP each</span><b>${fmt(m.avg_xp)}</b></div>
+      <div class="tl">${m.to_level != null ? fmt(m.to_level) : "—"} <span>more to level</span></div>
+    </div>`).join("") : `<div class="dim mid">Kill something and it shows up here.</div>`;
+}
+
+function renderMap(s){
+  const loc = s.location || {}, img = $("mapimg"), wrap = $("mapwrap"), msg = $("mapmsg");
+  const sub = loc.subzone && loc.subzone !== loc.zone ? `${loc.subzone.replace(/[.\s]+$/, "")}, ` : "";
+  $("locTxt").textContent = loc.zone ? `· ${sub}${loc.zone}${loc.x != null ? `  ${loc.x.toFixed(1)}, ${loc.y.toFixed(1)}` : ""}` : "";
+  const mp = s.mapping || {}, mb = $("mapping");
+  if (mb) {
+    mb.textContent = mp.on ? (mp.lost ? "🧭 Mapping · paused" : mp.need ? "🧭 Mapping · where?" : mp.following ? `🧭 Mapping · ${mp.map || "on"}` : "🧭 Mapping · finding you") : "🧭 Mapping · off";
+    mb.style.background = mp.on ? (mp.lost ? "#6b4a14" : "#2e5a2a") : "";
+    mb.dataset.tip = mb.dataset.tip || mb.title;
+    mb.title = mp.on && mp.lost ? `Mapping paused: a move didn't continue your path (${mp.lost}). It picks up again once your zone is certain.` : mb.dataset.tip;
+  }
+  // the dungeon map only while you're IN the dungeon: the run must be live, and the screen must not show
+  // coords (there are none inside instances - the screen knows you're out a minute before the late log does)
+  const lc = s.location || {}, outside = lc.x != null && lc.t && Date.now() / 1000 - lc.t < 10;
+  const dm = s.dungeon_map;
+  if (dm && dm.live && !outside) return renderDungeonMap(dm, img, msg);
+  const zm = s.zone_map;
+  if (zm) { renderZoneBuilt(s, zm, img, msg); return mapNote(s, msg); }
+  // nothing mapped here yet: an empty card, you in the middle, and what Mapping is doing at the bottom
+  img.removeAttribute("src");
+  const [ctx0, w0, h0] = sizeCanvas($("map"));
+  ctx0.clearRect(0, 0, w0, h0);
+  ctx0.fillStyle = "#f0c968"; ctx0.strokeStyle = "#000"; ctx0.lineWidth = 2;
+  ctx0.beginPath(); ctx0.arc(w0 / 2, h0 / 2, 7, 0, 7); ctx0.fill(); ctx0.stroke();
+  msg.textContent = "";
+  return mapNote(s, msg);
+}
+
+
+// a map stitched from the minimap alone (not lined up with the log yet): show it by itself, with you on it
+function drawLoose(ctx, w, h, U, redraw){
+  if (!window._ulImg || window._ulImg._src !== U.url) { const im = new Image(); im._src = U.url; im.src = U.url; im.onload = redraw; window._ulImg = im; }
+  const im = window._ulImg;
+  if (!(im.complete && im.naturalWidth)) return;
+  const k = Math.min((w - 20) / U.size[0], (h - 30) / U.size[1], 3), ox = (w - U.size[0] * k) / 2, oy = (h - 10 - U.size[1] * k) / 2;
+  ctx.drawImage(im, ox, oy, U.size[0] * k, U.size[1] * k);
+  if (U.me) {
+    const a = ox + U.me[0] * k, b = oy + U.me[1] * k;
+    ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 7, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = "rgba(240,201,104,.5)"; ctx.beginPath(); ctx.arc(a, b, 12 + (Date.now() / 120 % 8), 0, 7); ctx.stroke();
+  }
+}
+// map card zoom (mouse wheel over the map), remembered
+function hudZoom(){ let z = 1.6; try { z = parseFloat(localStorage.getItem("hudZoom")) || 1.6; } catch (_) {} return z; }
+document.addEventListener("wheel", e => {
+  if (!e.target || e.target.id !== "map") return;
+  e.preventDefault();
+  const z = Math.max(0.03, Math.min(6, hudZoom() * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  try { localStorage.setItem("hudZoom", z); } catch (_) {}
+  if (S) renderMap(S);
+}, {passive: false});
+
+
+// map tiles: a tile's URL changes (?v=) every time it's redrawn. Keep drawing the version already loaded
+// until the new one has arrived - otherwise the whole tile (~800 yd) blinks out on every redraw.
+function tileImg(url, onload) {
+  window._tiles = window._tiles || {};
+  const key = url.split("?")[0], t = window._tiles[key] || (window._tiles[key] = {});
+  if (t.want !== url) {
+    t.want = url;
+    const im = new Image();
+    im.onload = () => { if (t.want === url) { t.shown = im; onload && onload(); } };
+    im.src = url;
+  }
+  return t.shown && t.shown.complete && t.shown.naturalWidth ? t.shown : null;
+}
+// a zone map built from minimap shots: image pixel = k * coords% - origin
+function renderZoneBuilt(s, U, img, msg){
+  img.removeAttribute("src");
+  const loc = s.location || {}, [ctx, w, h] = sizeCanvas($("map"));
+  ctx.clearRect(0, 0, w, h); msg.textContent = "";
+  const pic = url => {                       // cached images (this zone + the zones around it)
+    window._zImgs = window._zImgs || {};
+    let im = window._zImgs[url];
+    if (!im) { im = new Image(); im.onload = () => { if (S) renderMap(S); }; im.src = url; window._zImgs[url] = im; }
+    return im.complete && im.naturalWidth ? im : null;
+  };
+  const im = U.url ? pic(U.url) : null;
+  // follow: you stay in the middle of the card, the map moves under you (wheel = zoom)
+  const sc = hudZoom();
+  const KX = U.kx || U.k, KY = U.ky || U.k;
+  const meX = loc.x != null ? KX * loc.x - U.origin[0] : U.size[0] / 2, meY = loc.y != null ? KY * loc.y - U.origin[1] : U.size[1] / 2;
+  const ox = w / 2 - meX * sc, oy = h / 2 - meY * sc;
+  ctx.fillStyle = "#0e0b08"; ctx.fillRect(0, 0, w, h);
+  const P = (x, y) => [ox + (KX * x - U.origin[0]) * sc, oy + (KY * y - U.origin[1]) * sc];
+  // seamless: neighbouring zones' maps first (placed by their real world position), this zone on top
+  (U.neighbors || []).forEach(n => {
+    const nim = pic(n.url); if (!nim) return;
+    const [a, b] = P(n.rect[0], n.rect[1]), [c, d] = P(n.rect[2], n.rect[3]);
+    ctx.drawImage(nim, a, b, c - a, d - b);
+  });
+  if (im) ctx.drawImage(im, ox, oy, U.size[0] * sc, U.size[1] * sc);
+  // the world map: one canvas per continent, drawn as tiles; only the ones on the card are loaded
+  if (U.world) {
+    const drawTiles = (tiles, alpha) => {
+      ctx.globalAlpha = alpha;
+      (tiles || []).forEach(([u, v, url]) => {
+        const T = U.tile, a = ox + u * sc, b = oy + v * sc;
+        if (a > w || b > h || a + T * sc < 0 || b + T * sc < 0) return;
+        const ti = tileImg(url, () => { if (S) renderMap(S); }); if (ti) ctx.drawImage(ti, a, b, T * sc, T * sc);
+      });
+      ctx.globalAlpha = 1;
+    };
+    // on a city level / floor: the outdoor map underneath (dimmed) so the city sits in its surroundings
+    const base = (U.floors || []).find(f => f.id === 0);
+    if (U.floor && base) drawTiles(base.tiles, 0.45);
+    drawTiles(U.tiles, 1);
+  }
+  drawAreas(ctx, U, (gx, gy) => [ox + U.px_per_unit * gx * sc, oy + U.px_per_unit * gy * sc], w, h);
+  if (showPath && U.world && U.trail && U.px_per_unit) {   // the trail on the map itself: continuous across zones
+    const K = U.px_per_unit;
+    ctx.strokeStyle = "rgba(255,0,255,.9)"; ctx.lineWidth = 2; ctx.beginPath();
+    let pen = false;
+    U.trail.forEach(p => {
+      if (!p) { pen = false; return; }                 // a warp: a gap, not a line
+      const a = ox + K * p[0] * sc, b = oy + K * p[1] * sc;
+      pen ? ctx.lineTo(a, b) : ctx.moveTo(a, b); pen = true;
+    });
+    ctx.stroke();
+  }
+  const tr = !showPath || (U.world && U.trail) ? [] : (loc.trail || []);
+  if (tr.length > 1) { ctx.strokeStyle = "rgba(255,0,255,.9)"; ctx.lineWidth = 2; ctx.beginPath();
+    tr.forEach((p, i) => { const [a, b] = P(p[1], p[2]); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); }
+  if (loc.x != null) { const [a, b] = P(loc.x, loc.y);
+    ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 7, 0, 7); ctx.fill(); ctx.stroke(); }
+  ctx.fillStyle = "#9a8f80"; ctx.font = "11px Segoe UI";
+  ctx.fillText(`${U.world ? U.continent + " · " : ""}built from ${U.snaps} minimap shots${loc.map_url ? " · click for the M map" : ""}`, 8, h - 8);
+}
+// your path on the map: shown or hidden (remembered in this browser), and cleared on demand
+let showPath = true;
+try { showPath = localStorage.getItem("showPath") !== "0"; } catch (e) {}
+function pathBtn() {
+  const b = $("pathshow");
+  if (b) { b.textContent = "〰 Path"; b.style.opacity = showPath ? 1 : 0.45; b.style.textDecoration = showPath ? "" : "line-through";
+    b.title = showPath ? "Your path is shown - click to hide it" : "Your path is hidden - click to show it"; }
+}
+document.addEventListener("click", e => {
+  if (e.target && e.target.id === "pathshow") {
+    showPath = !showPath;
+    try { localStorage.setItem("showPath", showPath ? "1" : "0"); } catch (err) {}
+    pathBtn(); tick();
+    return;
+  }
+  if (e.target && e.target.id === "pathclear") {
+    if (!window.confirm("Clear your path? It starts again from where you are.")) return;
+    fetch("/api/trail/clear", {method: "POST"}).then(() => tick()).catch(() => {});
+    return;
+  }
+  if (e.target && e.target.id === "renamelbl") {
+    const loc = (S && S.location) || {}, cur = (loc.subzone || loc.zone || "").replace(/[.\s]+$/, "");
+    if (!cur) return;
+    const to = window.prompt(`Correct the area name "${cur}" to:`, cur);
+    if (!to || to.trim() === cur) return;
+    fetch("/api/label/rename", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({from: cur, to: to.trim()})})
+      .then(() => tick()).catch(() => {});
+    return;
+  }
+  if (e.target && e.target.id === "mapnew") {
+    fetch("/api/mapping", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on: true, new: true})}).catch(() => {});
+    return;
+  }
+  if (e.target && e.target.id === "mapping") {
+    const on = !((S && S.mapping) || {}).on;
+    fetch("/api/mapping", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on})})
+      .then(r => r.json()).then(r => { if (S) { S.mapping = Object.assign(S.mapping || {}, r, {lost: null}); renderMap(S); } }).catch(() => {});
+    return;
+  }
+  if (e.target && e.target.id === "map") {
+    try { localStorage.setItem("mapSrc", (localStorage.getItem("mapSrc") || "built") === "built" ? "saved" : "built"); } catch (_) {}
+  }
+});
+
+// what Mapping is doing, at the bottom of the map card (only when there's something to say)
+function mapNote(s, msg){
+  const mp = s.mapping || {};
+  let html = "";
+  if (mp.on && mp.need === "choose") {
+    const known = (mp.known || []).map(k => k.label);
+    html = `Unknown location — move to a known location${known.length ? ` (${esc(known.slice(0, 5).join(", "))})` : ""} or `
+      + `<button class="qref" id="mapnew">Start a new map here</button>`;
+  } else if (mp.on && mp.lost) {
+    html = `Mapping paused: ${esc(mp.lost)}. Switch Mapping off and on where you are to look again.`;
+  } else if (mp.on && !mp.following) {
+    html = esc(mp.status || "") || "Mapping: finding you…";
+  } else if (!mp.on && !s.zone_map) {
+    html = "Press 🧭 Mapping to start mapping here.";
+  } else if (mp.on && mp.status && mp.status.startsWith("Mapping: new")) {
+    html = esc(mp.status);
+  }
+  if (html) { if (msg.dataset.note !== html || !msg.innerHTML) { msg.innerHTML = html; msg.dataset.note = html; } }
+  else if (msg.dataset.note) { msg.innerHTML = ""; msg.dataset.note = ""; }
+}
+
+// area names: biggest areas first; each name takes the first of its spots (nearest its middle) where it
+// doesn't overlap a name already placed - none free at this zoom: not shown (zoom in to see it)
+function placeNames(ctx, areas, toScreen, w, h, lineH){
+  const boxes = [];
+  [...areas].sort((p, q) => q.squares - p.squares).forEach(a => {
+    const tw = ctx.measureText(a.name).width + 6;
+    for (const sp of [a.center, ...(a.spots || [])]) {
+      const [cx, cy] = toScreen(sp[0], sp[1]);
+      if (cx < -tw || cy < -lineH || cx > w + tw || cy > h + lineH) continue;
+      const box = [cx - tw / 2, cy - lineH + 3, cx + tw / 2, cy + 3];
+      if (boxes.some(o => box[0] < o[2] && box[2] > o[0] && box[1] < o[3] && box[3] > o[1])) continue;
+      boxes.push(box);
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.strokeText(a.name, cx, cy);
+      ctx.fillStyle = "#f3dfa2"; ctx.fillText(a.name, cx, cy);
+      return;
+    }
+  });
+}
+
+// named areas (Mapping): a border where each name's bubble ends, the name in its middle
+function drawAreas(ctx, U, toScreen, w, h){
+  if (!U || !U.areas || !U.px_per_unit) return;
+  ctx.save();
+  // (the bubble's border isn't drawn - the user found it confusing; the bubble still places the name)
+  ctx.font = "bold 11px Segoe UI"; ctx.textAlign = "center";
+  placeNames(ctx, U.areas, toScreen, w, h, 13);
+  ctx.restore();
+}
+
+// inside a dungeon: the route from the combat log, fitted to the card, north up
+function renderDungeonMap(dm, img, msg){
+  img.removeAttribute("src");
+  const [ctx, w, h] = sizeCanvas($("map"));
+  ctx.clearRect(0, 0, w, h);
+  $("locTxt").textContent = `· ${dm.name}${dm.live ? "" : " (just left)"}`;
+  if (dm.underlay && dm.underlay.pinned === false) { msg.textContent = ""; drawLoose(ctx, w, h, dm.underlay, () => {}); return; }
+  const U = dm.underlay;
+  const pts = [...dm.trail, ...dm.old_trail, ...dm.pulls, ...dm.old_pulls].map(p => [p[0], p[1]]);
+  if (U) {   // the stitched minimap's corners, in world units (canvas px = (-y, -x) * k - origin)
+    pts.push([-(U.origin[1]) / U.k, -(U.origin[0]) / U.k], [-(U.origin[1] + U.size[1]) / U.k, -(U.origin[0] + U.size[0]) / U.k]);
+  }
+  if (dm.me) pts.push(dm.me);
+  if (dm.portal) pts.push(dm.portal);
+  if (!pts.length) { msg.textContent = `In ${dm.name}: the route draws as soon as the log has your position.`; return; }
+  msg.textContent = "";
+  // world x = north, y = west -> screen: right = east (-y), up = north (+x)
+  const xs = pts.map(p => -p[1]), ys = pts.map(p => -p[0]);
+  let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), pad = 18;
+  let k = Math.min((w - 2 * pad) / Math.max(20, x1 - x0), (h - 2 * pad) / Math.max(20, y1 - y0));
+  let cx = (w - k * (x1 - x0)) / 2, cy = (h - k * (y1 - y0)) / 2;
+  if (dm.me) {        // follow: you stay in the middle, the map moves (wheel = zoom)
+    k = (U ? U.k : 0.9) * hudZoom(); x0 = -dm.me[1]; y0 = -dm.me[0]; cx = w / 2; cy = h / 2;
+  }
+  const P = p => [cx + (-p[1] - x0) * k, cy + (-p[0] - y0) * k];
+  const line = (tr, col, wd) => { if (tr.length < 2) return; ctx.strokeStyle = col; ctx.lineWidth = wd; ctx.beginPath();
+    tr.forEach((p, i) => { const [a, b] = P(p);
+      const jump = i && Math.hypot(p[0] - tr[i - 1][0], p[1] - tr[i - 1][1]) > 40;      // death / ghost run / teleport
+      i && !jump ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); };
+  const dots = (ps, done) => ps.forEach(p => { const [a, b] = P(p);
+    ctx.fillStyle = p[3] ? (done ? "#b06cff" : "rgba(176,108,255,.35)") : p[2] >= 4 ? (done ? "#e8c23a" : "rgba(232,194,58,.3)") : (done ? "#3fbf5a" : "rgba(63,191,90,.3)");
+    ctx.beginPath(); ctx.arc(a, b, p[3] ? 6 : 3 + Math.min(4, p[2]), 0, 7); ctx.fill(); });
+  if (U) {
+    if (!window._ulImg || window._ulImg._src !== U.url) { window._ulImg = new Image(); window._ulImg._src = U.url; window._ulImg.src = U.url; }
+    const im = window._ulImg;
+    if (im.complete && im.naturalWidth) {
+      ctx.globalAlpha = .9;
+      ctx.drawImage(im, cx + (U.origin[0] / U.k - x0) * k, cy + (U.origin[1] / U.k - y0) * k, U.size[0] / U.k * k, U.size[1] / U.k * k);
+      ctx.globalAlpha = 1;
+    }
+  }
+  line(dm.old_trail, "rgba(150,140,125,.35)", 2);
+  dots(dm.old_pulls, false);
+  line(dm.trail, "rgba(255,230,140,.85)", 2.5);
+  dots(dm.pulls, true);
+  for (const d of dm.deaths) { const [a, b] = P(d); ctx.fillStyle = "#e9563f"; ctx.font = "bold 13px Segoe UI"; ctx.fillText("✝", a - 4, b + 4); }
+  if (dm.portal) {      // the way into the instance, while you're in the open-world mine
+    const [a, b] = P(dm.portal);
+    ctx.strokeStyle = "#c77dff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(a, b, 9, 0, 7); ctx.stroke();
+    ctx.fillStyle = "#e2c6ff"; ctx.font = "bold 11px Segoe UI"; ctx.fillText("PORTAL", a + 13, b + 4);
+  }
+  if (dm.me) {
+    const [a, b] = P(dm.me);
+    ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 7, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = "rgba(240,201,104,.5)"; ctx.beginPath(); ctx.arc(a, b, 12 + (Date.now() / 120 % 8), 0, 7); ctx.stroke();
+  }
+  ctx.fillStyle = "#9a8f80"; ctx.font = "11px Segoe UI";
+  ctx.fillText("gold = this run · grey = last run · green/yellow = pulls · purple = bosses · N ↑", 8, h - 8);
+}
+
+
+document.addEventListener("click", e => {
+  const box = document.getElementById("qrBox");
+  if (e.target.id === "lanTag" && S && S.lan && S.lan[0]) {
+    document.getElementById("qrImg").src = "/api/qr.svg?" + encodeURIComponent(S.lan[0]);   // a new address = a new picture
+    document.getElementById("qrUrl").textContent = S.lan[0];
+    box.hidden = false;
+  } else if (!box.hidden) box.hidden = true;
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("qrBox").hidden = true; });
+function logsBanner(s){
+  const lt = document.getElementById("lanTag");
+  if (lt){ const u = s.local && s.lan && s.lan[0]; lt.hidden = !u; if (u) lt.textContent = "▦ tablet: " + u.replace("http://", ""); }
+  const L = s.logs, el = document.getElementById("logsWarn");
+  if (!el) return;
+  const msgs = [];
+  if (L && L.off && L.off.length) msgs.push(`⚠ Logs look OFF: type ${L.off.join(" and ")} in game (they turn off at every logout)`);
+  if (s.gdi > 5000) msgs.push(`⚠ The companion is leaking screen handles (${s.gdi.toLocaleString()} of 10,000): restart it before the screen reads stop`);
+  if (FAILED.length) msgs.push(`⚠ Not drawn (the rest of the page carries on): ${FAILED.join(", ")}`);
+  el.hidden = !msgs.length; el.textContent = msgs.join(" · ");
+}
+function renderFeed(s){
+  if (!$("feed")) return;
+  $("feed").innerHTML = s.feed.slice(0, 4).map(f => `<li class="${f.kind}"><span class="dim">${clock(f.t)}</span> ${esc(f.text)}</li>`).join("")
+    || `<li class="dim">Nothing yet.</li>`;
+}
+
+let selQuest = null;            // title of the quest whose answer is shown
+function qColor(ql, pl){
+  if (!ql || !pl) return "#c9b98f";
+  const d = ql - pl;
+  if (d >= 5) return "#ff4b3a"; if (d >= 3) return "#ff9a3a"; if (d >= -2) return "#ffd84a";
+  const gray = pl <= 5 ? 0 : pl <= 39 ? pl - Math.floor(pl/10) - 5 : pl - Math.floor(pl/5) - 1;
+  return ql > gray ? "#4fd35a" : "#9a9a9a";
+}
+function askFor(s, title){ return (s.asks || []).find(a => a.quest && a.quest.title === title); }
+function renderQuests(s){
+  const qs = s.quests || [], pl = s.xp && s.xp.level;
+  const el = $("qlist"), info = s.quests_info || {};
+  const btn = $("qref");
+  btn.disabled = !!info.busy; btn.textContent = info.busy ? "reading…" : "↻ Refresh";
+  $("qinfo").textContent = info.error ? `Couldn't read: ${info.error}` : info.t ? `read at ${clock(info.t)}` : "";
+  if (info.qwindow && info.qwindow.mode === "detail" && info.qwindow.t !== qwinSeenT) { qwinSeenT = info.qwindow.t; qwin = info.qwindow; selQuest = null; }
+  if (!qs.length) { el.innerHTML = `<div class="dim">${info.busy ? "Reading your quest tracker…" : "Press ↻ Refresh to read your quest tracker."}</div>`; }
+  else el.innerHTML = qs.map((q, i) => {
+    const a = askFor(s, q.title);
+    const st = a ? (a.status === "answered" ? "✦ answer" : "asking…") : "";
+    return `<div class="q ${q.title === selQuest ? "sel" : ""}" data-i="${i}">
+      <div class="t">${q.level ? `<span class="lv" style="background:${qColor(q.level, pl)}">${q.level}</span>` : ""}${esc(q.title)}
+        ${q.done ? '<span class="ok">✓ done</span>' : st ? `<span class="st">${st}</span>` : ""}</div>
+      ${q.details.length ? `<div class="d">${esc(q.details.slice(0, 2).join(" · "))}</div>` : ""}</div>`;
+  }).join("");
+  const box = $("ans");
+  if (qwin) { renderQwin(); return; }
+  if (!selQuest) { box.hidden = true; return; }
+  const q = qs.find(x => x.title === selQuest) || {title: selQuest, level: null};
+  const a = askFor(s, selQuest);
+  const wh = `https://www.wowhead.com/forever/search?q=${encodeURIComponent(selQuest)}`;
+  box.hidden = false;
+  box.innerHTML = `<h4>${esc(selQuest)} <span class="dim small" style="cursor:pointer;float:right" id="ansClose">✕</span></h4>
+    <div class="small"><a href="${wh}" target="_blank" rel="noopener">Open on Wowhead ↗</a></div>
+    <div class="body" style="margin-top:.6vh">${!a ? "Sending to Claude…" :
+      a.status === "answered" ? esc(a.answer) :
+      a.status === "queued" ? "Sent to Claude in your chat session; the answer shows up here in a minute or so." :
+      "Asking Claude…"}</div>`;
+  const c = $("ansClose"); if (c) c.onclick = e => { e.stopPropagation(); selQuest = null; renderQuests(s); };
+}
+let qwin = null;                // last read of the quest window (detail view)
+function renderQwin(){
+  const box = $("ans");
+  if (!qwin) return;
+  selQuest = null;
+  box.hidden = false;
+  if (qwin.mode === "error") {
+    box.innerHTML = `<h4>Quest window <span class="dim small" style="cursor:pointer;float:right" id="ansClose">✕</span></h4><div class="body">${esc(qwin.error)}</div>`;
+  } else if (qwin.mode === "list") {
+    box.innerHTML = `<h4>Quest log read <span class="dim small" style="cursor:pointer;float:right" id="ansClose">✕</span></h4>
+      <div class="body">Your log has ${qwin.quests.length} quests: ${esc(qwin.quests.map(q => q.title).join(", "))}. (Your list above only changes when you press ↻ Refresh.)
+Click a quest in the game's log to open it, then press 📖 again to read its full text.</div>`;
+  } else {
+    const wh = `https://www.wowhead.com/forever/search?q=${encodeURIComponent(qwin.title || "")}`;
+    box.innerHTML = `<h4>${qwin.level ? `[${qwin.level}] ` : ""}${esc(qwin.title || "Quest")} <span class="dim small" style="cursor:pointer;float:right" id="ansClose">✕</span></h4>
+      <div class="small"><a href="${wh}" target="_blank" rel="noopener">Open on Wowhead ↗</a> · <a href="#" id="qwinAsk">Ask Claude about this quest</a></div>
+      <div class="body" style="margin-top:.6vh">${esc(qwin.lines.join(String.fromCharCode(10)))}</div>`;
+    $("qwinAsk").onclick = async e => {
+      e.preventDefault();
+      const quest = {level: qwin.level, title: qwin.title, details: qwin.lines.slice(0, 40)};
+      selQuest = quest.title; qwin = null;
+      await fetch("/api/ask", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({quest})});
+      tick();
+    };
+  }
+  const c = $("ansClose"); if (c) c.onclick = () => { qwin = null; box.hidden = true; };
+}
+let qwinSeenT = null;            // show each refresh's quest-window read once
+$("qref").addEventListener("click", async () => {
+  $("qref").disabled = true; $("qref").textContent = "reading…";
+  await fetch("/api/quests/refresh", {method: "POST"});
+  tick();
+});
+$("qlist").addEventListener("click", async e => {
+  const card = e.target.closest(".q"); if (!card || !S) return;
+  const q = (S.quests || [])[+card.dataset.i]; if (!q) return;
+  qwin = null; selQuest = q.title; renderQuests(S);
+  if (!askFor(S, q.title)) {
+    await fetch("/api/ask", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({quest: q})});
+    tick();
+  }
+});
+
+async function tick(){
+  try {
+    S = await (await fetch("/api/state", {cache: "no-store"})).json();
+  } catch (e) {
+    $("fresh").textContent = "companion not running"; $("fresh").className = "fresh dead";
+    return;
+  }
+  // each card by itself: one that fails is named in the banner and the others still draw
+  FAILED = [];
+  for (const f of CARDS) {
+    try { f(S); } catch (e) { console.error(f.name, e); FAILED.push(f.name.replace(/^render/, "")); }
+  }
+  try { logsBanner(S); } catch (e) {}
+}
+let FAILED = [];
+const CARDS = [renderTop, renderBuffAggro, renderXp, renderGear, renderPurse, renderVs, renderReady, renderXpChart, renderDonut,
+               renderMobs, renderSpells, renderHeals, renderQuestXp, renderMap, renderFeed, renderQuests];
+pathBtn(); tick(); setInterval(tick, 1500);
+addEventListener("resize", () => S && (renderXpChart(S), renderMap(S)));
+</script>
+</body>
+</html>
