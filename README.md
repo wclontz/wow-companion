@@ -65,8 +65,13 @@ to do, anything worth knowing.
 - Claude has to be signed in as a command-line program, which is separate from being signed in to the desktop
   app. If it is not, the button reads **Claude: sign in**: click it and Claude opens its own sign-in window and
   your browser, where you sign in. The companion never sees your password.
-- What is sent: the quest's name, level and tracker text, your level and zone. An answer is kept in `asks.jsonl`
-  and reused, so a quest is looked up once.
+- What is sent: the quest's name, level and tracker text, your level and zone.
+- Claude also marks the quest's places on the maps: the turn-in (?), where it starts (!) and where to hunt (◆),
+  on the HUD's map (arrows on its edge when they are off the card) and on the map page. They are as good as
+  the look-up: often from memory of Classic, so treat them as "around here".
+- The answer and its marks are kept until the quest leaves your quest log (finished or abandoned), then put
+  away. Take the quest again and they come back without a new look-up. "Look it up again" under an answer asks
+  afresh.
 - Only from the PC itself: a tablet on the network can read answers, not start look-ups.
 - Without Claude the companion works the same, minus those answers.
 

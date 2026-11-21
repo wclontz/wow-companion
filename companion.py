@@ -1173,6 +1173,11 @@ class Companion:
                 return out
             info = MAPPER.info(place)
             out["info"] = info
+            try:
+                out["quest_spots"] = [s for s in quest_spots((info or {}).get("frame")) if "fx" in s] \
+                    if (info or {}).get("unit") == "coords" else []
+            except Exception:
+                out["quest_spots"] = []
             unit = (info or {}).get("unit")
             if unit == "coords" and LOC is not None and MAPPER.place_now and                     (place == MAPPER.place_now or (info or {}).get("frame") == MAPPER.place_now):
                 out["me"] = [LOC.x, LOC.y] if LOC.x is not None else None
@@ -2171,9 +2176,19 @@ class Tailer(threading.Thread):
             old, new = [q["title"] for q in QUESTS.quests], [q["title"] for q in ql]
             if ql != QUESTS.quests:
                 QUESTS.quests, QUESTS.t, QUESTS.error = ql, time.time(), None
+            who = (d.get("texts") or {}).get("name")
             if getattr(self, "_strip_quests", False) and sorted(old) != sorted(new):
                 self.comp.quests_refreshed(old, new)     # a quest left the log: it names the XP jump just before
+                # ...and it is finished or abandoned: its look-up and its marks on the maps are put away. Only on
+                # the same character (another character's log is another list), and never a whole log at once.
+                gone = [t for t in old if t not in new]
+                if ASKER and who and who == getattr(self, "_strip_quests_who", None) and 0 < len(gone) <= 3:
+                    try:
+                        ASKER.close(gone)
+                    except Exception as e:
+                        print("closing look-ups:", repr(e), file=sys.stderr)
             self._strip_quests = True                    # (not the first time: that list came off the tracker)
+            self._strip_quests_who = who
         return (d.get("texts") or {}).get("target")
 
     def _beacon_dungeon(self):
@@ -2321,6 +2336,35 @@ def load_markers():
         return []
 
 
+def quest_spots(frame=None):
+    """Where the looked-up quests still in your log send you, for the maps: each place as the look-up gave it
+    (zone, x, y in that zone's map coords) plus, when both zones' edges are known, the same place in the coords of
+    the zone the map on the page is drawn in (fx, fy)."""
+    if not ASKER:
+        return []
+    import quadmap
+    titles = {q.get("title") for q in (QUESTS.quests if QUESTS else [])} or None
+    bb = quadmap.zone_bounds()
+    low = {z.lower(): z for z in bb}
+    bf = bb.get(frame) if frame else None
+    out = []
+    for s in ASKER.spots(titles):
+        s = dict(s)
+        zone = low.get(s["zone"].lower())
+        if zone:
+            s["zone"] = zone
+        if frame and zone == frame:
+            s["fx"], s["fy"] = s["x"], s["y"]
+        elif bf and zone:
+            n, so, w, e = bb[zone]                               # zone % -> world yards -> the frame's %
+            wx, wy = n - s["y"] / 100 * (n - so), w - s["x"] / 100 * (w - e)
+            fn, fs, fw, fe = bf
+            if fw != fe and fn != fs:
+                s["fx"], s["fy"] = round((fw - wy) / (fw - fe) * 100, 2), round((fn - wx) / (fn - fs) * 100, 2)
+        out.append(s)
+    return out
+
+
 LOCAL_ONLY = ("/api/restore", "/api/import", "/api/trail/clear", "/api/label/rename", "/api/ask", "/api/answer",
               "/api/claude", "/api/claude/login")
 
@@ -2425,9 +2469,14 @@ class Handler(BaseHTTPRequestHandler):
                 loc["zone"] = zone
                 snap["location"] = loc
             snap["markers"] = load_markers()
+            try:
+                snap["quest_spots"] = quest_spots((snap.get("zone_map") or {}).get("frame"))
+            except Exception as e:
+                snap["quest_spots"] = []
+                print("quest spots:", repr(e), file=sys.stderr)
             snap["quests_info"] = {"busy": QUESTS.busy, "t": QUESTS.t, "error": QUESTS.error,
                                    "qwindow": QUESTS.qwindow} if QUESTS else None
-            snap["asks"] = [{k: a.get(k) for k in ("id", "quest", "status", "answer", "by", "t")}
+            snap["asks"] = [{k: a.get(k) for k in ("id", "quest", "status", "answer", "by", "t", "spots")}
                             for a in ASKER.list()] if ASKER else []
             self._send(200, json.dumps(snap).encode(), "application/json")
         elif self.path.startswith("/minimap/"):
@@ -2585,7 +2634,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 snap = COMP.snapshot()
                 ctx = {"level": (snap.get("xp") or {}).get("level"), "zone": snap.get("zone")}
-                rec = ASKER.ask(body["quest"], ctx)
+                rec = ASKER.ask(body["quest"], ctx, again=body.get("again") is True)
                 self._send(200, json.dumps({"id": rec["id"], "status": rec["status"],
                                             "answer": rec.get("answer")}).encode(), "application/json")
             except (ValueError, KeyError, TypeError) as e:

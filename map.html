@@ -70,6 +70,42 @@ function uv(d, p){ return d.info.unit === "coords" ? [p[0], p[1]] : [-p[1], -p[0
 function toImg(d, p){ const [u, v] = uv(d, p); return [(d.info.kx || d.info.k) * u - d.info.origin[0], (d.info.ky || d.info.k) * v - d.info.origin[1]]; }
 
 const nbImgs = {};
+
+// places a quest look-up gave (start / objective / turn-in), drawn on a map: at(fx, fy) -> card pixels
+const SPOT_COL = {start: "#ffd24a", turnin: "#ffd24a", objective: "#5fd6ff"};
+function drawQuestSpots(ctx, spots, at, w, h, picked, edge){
+  ctx.save(); ctx.font = "600 11px Segoe UI"; ctx.textBaseline = "middle";
+  (spots || []).forEach(sp => {
+    if (sp.fx == null) return;
+    const [a, b] = at(sp.fx, sp.fy);
+    if (a < 0 || b < 0 || a > w || b > h) {
+      // off the card: an arrow on the edge, pointing the way (the picked quest's, or all when none is picked)
+      if (!edge || (picked && picked !== sp.quest)) return;
+      const cx = w / 2, cy = h / 2, dx = a - cx, dy = b - cy, m = 14;
+      const f = Math.min((cx - m) / Math.abs(dx || 1e-9), (cy - m) / Math.abs(dy || 1e-9));
+      const ex = cx + dx * f, ey = cy + dy * f, ang = Math.atan2(dy, dx);
+      ctx.save(); ctx.translate(ex, ey); ctx.rotate(ang);
+      ctx.fillStyle = SPOT_COL[sp.kind] || SPOT_COL.objective; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-6, -7); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+      const text = sp.label || sp.quest, tw = ctx.measureText(text).width;
+      if (picked && text) { const tx = Math.max(4, Math.min(w - tw - 4, ex - Math.cos(ang) * 14 - (dx > 0 ? tw : 0))), ty = Math.max(10, Math.min(h - 22, ey - Math.sin(ang) * 16));
+        ctx.textAlign = "left"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.strokeText(text, tx, ty); ctx.fillStyle = "#fff3cf"; ctx.fillText(text, tx, ty); }
+      return;
+    }
+    const on = !picked || picked === sp.quest, r = on ? 7 : 5;
+    ctx.globalAlpha = on ? 1 : 0.55;
+    ctx.fillStyle = SPOT_COL[sp.kind] || SPOT_COL.objective; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(a, b - r); ctx.lineTo(a + r, b); ctx.lineTo(a, b + r); ctx.lineTo(a - r, b); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#000"; ctx.textAlign = "center";
+    ctx.fillText(sp.kind === "start" ? "!" : sp.kind === "turnin" ? "?" : "", a, b + .5);
+    const text = sp.label || sp.quest;
+    if (on && text) { ctx.textAlign = "left"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.85)";
+      ctx.strokeText(text, a + r + 4, b); ctx.fillStyle = "#fff3cf"; ctx.fillText(text, a + r + 4, b); }
+  });
+  ctx.restore();
+}
 function fitView(d){
   const cv = $("cv"), w = cv.clientWidth, h = cv.clientHeight, s = d.info.size;
   if (d.info.bbox) { const [u0, v0, u1, v1] = d.info.bbox;     // the continent map: fit what's been mapped
@@ -181,6 +217,7 @@ function draw(){
     ctx.fillStyle = "#c77dff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(a, c - 10); ctx.lineTo(a + 10, c); ctx.lineTo(a, c + 10); ctx.lineTo(a - 10, c); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#e2c6ff"; ctx.fillText(b[2], a + 13, c + 4); });
+  drawQuestSpots(ctx, d.quest_spots, (fx, fy) => S(...toImg(d, [fx, fy])), w, h, null);
   if (d.me) {
     const [a, b] = S(...toImg(d, d.me));
     ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 8, 0, 7); ctx.fill(); ctx.stroke();

@@ -400,6 +400,42 @@ def set_claude(on):
     return claude_mode()
 
 
+SPOT_KINDS = ("start", "objective", "turnin")
+SPOTS_ASK = ('After the answer, add ONE last line that starts with SPOTS: followed by a JSON list (on that one line) of up '
+             'to 6 places to go for this quest, most useful first, each '
+             '{"zone": "<zone name>", "x": <zone map x, 0-100>, "y": <zone map y, 0-100>, "label": "<4 words at most>", '
+             '"kind": "start" or "objective" or "turnin"}. Zone map coordinates as Wowhead shows them. For mobs spread '
+             'over an area give the middle of the area. Only places you have coordinates for; SPOTS: [] if none.')
+
+
+def parse_spots(text):
+    """An answer that ends with a `SPOTS: [...]` line -> (the answer without it, the places as a clean list).
+    Anything not shaped right is left out: this is text from a look-up, never trusted."""
+    i = (text or "").rfind("SPOTS:")
+    if i < 0:
+        return text, None
+    head, tail = text[:i].rstrip().rstrip("`").rstrip(), text[i + 6:].strip().strip("`").strip()
+    try:
+        raw = json.loads(tail[tail.index("["):tail.rindex("]") + 1])
+    except ValueError:
+        return head or text, None
+    spots = []
+    for s in raw if isinstance(raw, list) else []:
+        try:
+            x, y = float(s["x"]), float(s["y"])
+            zone = str(s["zone"]).strip()[:40]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not zone or not (0 <= x <= 100 and 0 <= y <= 100):
+            continue
+        kind = s.get("kind") if s.get("kind") in SPOT_KINDS else "objective"
+        spots.append({"zone": zone, "x": round(x, 1), "y": round(y, 1), "kind": kind,
+                      "label": re.sub(r"[^\w '\-:,.()]", "", str(s.get("label") or ""))[:40].strip()})
+        if len(spots) == 8:
+            break
+    return head, spots
+
+
 class Asker:
     def __init__(self):
         self.lock = threading.Lock()
@@ -422,10 +458,16 @@ class Asker:
         with open(ASKS_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
 
-    def ask(self, quest, context):
-        # reuse an answer we already have for the same quest
+    def ask(self, quest, context, again=False):
+        # reuse an answer we already have for the same quest (again: look it up afresh, e.g. for its map spots)
         with self.lock:
-            for a in self.asks.values():
+            for a in ([] if again else self.asks.values()):
+                if a.get("closed") and a.get("status") == "answered" and a.get("quest", {}).get("title") == quest.get("title"):
+                    a["closed"] = False                  # the quest is in the log again: its answer comes back out
+                    self._append({"id": a["id"], "closed": False})
+                    return a
+                if a.get("closed"):
+                    continue
                 if a.get("quest", {}).get("title") == quest.get("title") and a.get("status") in ("answered", "pending") \
                         and (a.get("status") == "answered" or time.time() - a.get("t", 0) < 300):   # (asked again while it's still being looked up: not another lookup)
                     return a
@@ -441,14 +483,36 @@ class Asker:
             a = self.asks.get(ask_id)
             if not a:
                 return False
-            a.update(status="answered", answer=text, by=by, answered_t=time.time())
+            text, spots = parse_spots(text)
+            a.update(status="answered", answer=text, by=by, answered_t=time.time(), spots=spots)
             self._append({"id": ask_id, "status": "answered", "answer": text, "by": by,
-                          "answered_t": a["answered_t"]})
+                          "answered_t": a["answered_t"], "spots": spots})
             return True
+
+    def close(self, titles):
+        """These quests left the log (finished or abandoned): put their look-ups away. They stay in asks.jsonl,
+        off the pages and the maps, and come back without a new look-up if the quest is taken again."""
+        with self.lock:
+            for a in self.asks.values():
+                if not a.get("closed") and (a.get("quest") or {}).get("title") in titles:
+                    a["closed"] = True
+                    self._append({"id": a["id"], "closed": True})
+
+    def spots(self, titles=None):
+        """The places of the newest answer for each quest (only the quests named, when a list is given):
+        [{quest, zone, x, y, label, kind}]."""
+        with self.lock:
+            newest = {}
+            for a in self.asks.values():
+                t = (a.get("quest") or {}).get("title")
+                if t and a.get("status") == "answered" and not a.get("closed") and (titles is None or t in titles):
+                    if t not in newest or a.get("answered_t", 0) > newest[t].get("answered_t", 0):
+                        newest[t] = a
+            return [dict(s, quest=t) for t, a in newest.items() for s in (a.get("spots") or [])]
 
     def list(self):
         with self.lock:
-            return sorted(self.asks.values(), key=lambda a: -a.get("t", 0))[:20]
+            return sorted((a for a in self.asks.values() if not a.get("closed")), key=lambda a: -a.get("t", 0))[:40]
 
     def _try_cli(self, rec):
         exe = find_claude_cli()
@@ -459,7 +523,7 @@ class Asker:
         prompt = (f"World of Warcraft Classic-era quest (WoW Forever): [{q.get('level')}] {q.get('title')}. "
                   f"Tracker text: {' | '.join(q.get('details', []))}. Player context: {rec.get('context')}. "
                   "Look it up on wowhead.com/forever (Forever adds quests that are not in Classic). Answer in under 120 words, plain text: where to go "
-                  "(zone + map coords), what to do/kill/loot, drop rates or tips, and the reward if notable.")
+                  "(zone + map coords), what to do/kill/loot, drop rates or tips, and the reward if notable. " + SPOTS_ASK)
         try:
             out = subprocess.run([exe, "-p", prompt, "--allowedTools", "WebSearch,WebFetch"],
                                  capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180, creationflags=NO_WINDOW,
