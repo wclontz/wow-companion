@@ -560,6 +560,19 @@ class Companion:
         return bool(st and st.get("ok") and time.time() - st.get("t", 0) < 3)
 
     def push(self, t, kind, text):
+        if kind == "hostile" and self.feed and self.feed[0]["kind"] == "hostile":
+            # one line for a run of them (24 of the feed's 25 lines were "Hostile player nearby" on 2026-11-21,
+            # and kills, deaths and records were pushed off the end): newest names first
+            e = self.feed[0]
+            names = e.setdefault("names", [e["text"].split(": ", 1)[-1]])
+            nm = text.split(": ", 1)[-1]
+            if nm in names:
+                names.remove(nm)
+            names.insert(0, nm)
+            del names[12:]
+            e["t"] = t
+            e["text"] = "Hostile players nearby: " + ", ".join(names[:4]) + (f" and {len(names) - 4} more" if len(names) > 4 else "")
+            return
         self.feed.appendleft({"t": t, "kind": kind, "text": text})
 
     # ------------------------------------------------------------ combat log
