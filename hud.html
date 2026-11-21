@@ -323,7 +323,8 @@ canvas{width:100%;flex:1;min-height:0;height:0;display:block}
   <!-- Quests -->
   <section class="card qcol">
     <h3 style="display:flex;align-items:center;gap:.8vh">Quests <span class="dim" style="text-transform:none;letter-spacing:0">· click one to look it up</span>
-      <button class="qref" id="qref" title="Read your quest tracker (and the quest log window, if it's open)" style="margin-left:auto">↻ Refresh</button></h3>
+      <button class="qref" id="claudeSw" hidden style="margin-left:auto"></button>
+      <button class="qref" id="qref" title="Read your quest tracker (and the quest log window, if it's open)">↻ Refresh</button></h3>
     <div class="dim small" id="qinfo" style="margin:-.2vh 0 .6vh"></div>
     <div class="qlist" id="qlist"><div class="dim">Press ↻ Refresh to read your quest tracker.</div></div>
     <div class="ans" id="ans" hidden></div>
@@ -1101,7 +1102,7 @@ function renderQuests(s){
     <div class="small"><a href="${wh}" target="_blank" rel="noopener">Open on Wowhead ↗</a></div>
     <div class="body" style="margin-top:.6vh">${a && a.status === "answered" ? esc(a.answer) :
       s.claude === "missing" ? "No look-up here: Claude is not installed on this PC. The Wowhead link above has the quest." :
-      s.claude !== "on" ? 'Claude look-ups are off on this PC. To have Claude look quests up (each one uses your own Claude plan), run Setup.bat again or put "claude": true in settings.json. The Wowhead link above has the quest.' :
+      s.claude !== "on" ? 'Claude look-ups are off. Switch them on with the "Claude: off" button at the top of this card, on the PC the companion runs on (each look-up uses your own Claude plan). The Wowhead link above has the quest.' :
       !a ? "Sending to Claude…" :
       a.status === "queued" ? "Claude did not answer by itself (is it signed in?). The question is kept, and the answer shows here if a Claude session answers it." :
       "Asking Claude…"}</div>`;
@@ -1135,6 +1136,27 @@ Click a quest in the game's log to open it, then press 📖 again to read its fu
   const c = $("ansClose"); if (c) c.onclick = () => { qwin = null; box.hidden = true; };
 }
 let qwinSeenT = null;            // show each refresh's quest-window read once
+// the switch for quest look-ups by Claude: only on the PC itself, and only when Claude is installed there
+function renderClaudeSw(s){
+  const b = $("claudeSw"); if (!b) return;
+  const here = s.claude === "on" || s.claude === "off";
+  b.hidden = !here; $("qref").style.marginLeft = here ? "" : "auto";
+  if (!here) return;
+  const on = s.claude === "on";
+  b.textContent = on ? "Claude: on" : "Claude: off";
+  b.style.opacity = on ? "" : ".6";
+  b.disabled = !s.local;
+  b.title = (on ? "Clicking a quest has Claude look it up on the web (each look-up uses your own Claude plan)."
+                : "Clicking a quest only gives its Wowhead link.")
+          + (s.local ? " Click to switch " + (on ? "off." : "on.") : " Switch it on the PC the companion runs on.");
+}
+$("claudeSw").addEventListener("click", async () => {
+  if (!S || !S.local) return;
+  const on = S.claude !== "on";
+  if (on && !confirm("Have Claude look quests up when you click them?\n\nEach look-up runs your own Claude on this PC and uses your Claude plan. A quest is only looked up once.")) return;
+  await fetch("/api/claude", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on})});
+  tick();
+});
 $("qref").addEventListener("click", async () => {
   $("qref").disabled = true; $("qref").textContent = "reading…";
   await fetch("/api/quests/refresh", {method: "POST"});
@@ -1166,7 +1188,7 @@ async function tick(){
 }
 let FAILED = [];
 const CARDS = [renderTop, renderBuffAggro, renderXp, renderGear, renderPurse, renderVs, renderReady, renderXpChart, renderDonut,
-               renderMobs, renderSpells, renderHeals, renderQuestXp, renderMap, renderFeed, renderQuests];
+               renderMobs, renderSpells, renderHeals, renderQuestXp, renderMap, renderFeed, renderQuests, renderClaudeSw];
 pathBtn(); tick(); setInterval(tick, 1500);
 addEventListener("resize", () => S && (renderXpChart(S), renderMap(S)));
 </script>

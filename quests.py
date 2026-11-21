@@ -345,6 +345,14 @@ def claude_mode():
     return _MODE[1]
 
 
+def set_claude(on):
+    """The HUD's switch: remember it in settings.json. -> the mode now ("missing" when Claude is not on this PC)."""
+    import wowpath
+    wowpath.save_setting("claude", bool(on))
+    _MODE[0] = 0.0
+    return claude_mode()
+
+
 class Asker:
     def __init__(self):
         self.lock = threading.Lock()

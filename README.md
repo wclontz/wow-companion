@@ -59,7 +59,8 @@ Click a quest on the HUD and you get a Wowhead link. If Claude (the desktop app 
 the PC, the companion can also have it look the quest up on the web and answer in a few lines: where to go, what
 to do, anything worth knowing.
 
-- It is off until you switch it on: Setup.bat asks, or put `"claude": true` in `settings.json`.
+- It is off until you switch it on: the **Claude: off / on** button at the top of the HUD's Quests card (it only
+  shows when Claude is installed, and only works on the PC itself). Setup.bat asks too.
 - Each look-up runs your own Claude, signed in as you, on your plan. Nothing goes through anyone else's account.
 - What is sent: the quest's name, level and tracker text, your level and zone. An answer is kept in `asks.jsonl`
   and reused, so a quest is looked up once.

@@ -2321,7 +2321,8 @@ def load_markers():
         return []
 
 
-LOCAL_ONLY = ("/api/restore", "/api/import", "/api/trail/clear", "/api/label/rename", "/api/ask", "/api/answer")
+LOCAL_ONLY = ("/api/restore", "/api/import", "/api/trail/clear", "/api/label/rename", "/api/ask", "/api/answer",
+              "/api/claude")
 
 
 def lan_urls():
@@ -2555,6 +2556,14 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, TypeError):
                 pass
             self._send(200, json.dumps({"on": MAPPER.mapping_on}).encode(), "application/json")
+            return
+        if self.path == "/api/claude":                # the HUD's switch for quest look-ups (this PC only)
+            try:
+                from quests import set_claude
+                mode = set_claude(self._json().get("on") is True)
+                self._send(200, json.dumps({"ok": True, "claude": mode}).encode(), "application/json")
+            except (ValueError, OSError) as e:
+                self._send(400, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
             return
         if self.path == "/api/ask" and ASKER:
             try:

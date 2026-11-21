@@ -25,7 +25,8 @@ sends input to the game. Keep it that way.
      `python autostart.pyw --install` (a shortcut in their Startup folder; `--uninstall` removes it).
    - Quest look-ups: the companion can run `claude -p` (web search only) when they click a quest on the HUD, to
      answer where to go and what to do. That uses their Claude plan, so it is off by default. Ask them; on a yes
-     add `--claude` to the setup command (or set `"claude": true` in `settings.json`). `quests.py`
+     add `--claude` to the setup command; they can switch it themselves with the "Claude: on / off" button on the
+     HUD's Quests card (`"claude"` in `settings.json`). `quests.py`
      `find_claude_cli` is how it finds the program; `"claude_path"` in `settings.json` names it outright.
 3. Tell them what only they can do, in the game:
    - restart the game; on the character screen click AddOns and tick Companion Beacon ("Load out of date
