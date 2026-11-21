@@ -859,6 +859,11 @@ class Grids:
         # view unknown (Mapping off, the first yards of a stretch): the level follows where you stand
         view = self.cur.get("view") if here and self.cur.get("view") in ("in", "out") else None
         inf = self.world.info_grid(gid, here, self.cur["fid"] if here else None, view)
+        if inf and here is not None:
+            # where you are in the map's own units (map px = px_per_unit x this), whatever zone's coords the page
+            # was last told: at a zone's edge the zone - and with it kx / origin below - changes a moment before
+            # or after the coords the page has, and the dot jumped a thousand pixels for an update (2026-11-21)
+            inf["me_g"] = [round(here[0], 2), round(here[1], 2)]
         if inf and f and f.get("pending") and self.cur and self.cur["fid"] == fid:
             # being measured: a typical zone's scale (~35 yd per %), anchored at your spot, so the dot stays put
             K = inf["px_per_unit"]

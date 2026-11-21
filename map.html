@@ -67,6 +67,12 @@ let img = null, imgSrc = null, pickFloor = null;
 let dirty = true;
 
 function uv(d, p){ return d.info.unit === "coords" ? [p[0], p[1]] : [-p[1], -p[0]]; }     // world: x north, y west
+// you, in map px: the mapper's own spot when it gives one (no jump at a zone's edge), else your coords
+function mePx(d){
+  const i = d.info || {};
+  if (i.me_g && i.px_per_unit && d.me) return [i.px_per_unit * i.me_g[0], i.px_per_unit * i.me_g[1]];
+  return d.me ? toImg(d, d.me) : null;
+}
 function toImg(d, p){ const [u, v] = uv(d, p); return [(d.info.kx || d.info.k) * u - d.info.origin[0], (d.info.ky || d.info.k) * v - d.info.origin[1]]; }
 
 const nbImgs = {};
@@ -138,7 +144,7 @@ function draw(){
   if (view && !(view.z > 0)) view = null;
   if (!view) { fitView(d); fitZ = view.z; const z = savedZoom(d.place); if (z && follow && d.me) view.z = z; }
   showZoom();
-  if (follow && d.me) { const [a, b] = toImg(d, d.me); view.cx = a; view.cy = b; }
+  if (follow && d.me) { const [a, b] = mePx(d); view.cx = a; view.cy = b; }
   // (a map you're not standing on has no "you": draw it fitted - it used to stay blank until you dragged it)
   const S = (ix, iy) => [w / 2 + (ix - view.cx) * view.z, h / 2 + (iy - view.cy) * view.z];
   // seamless: the zones around this one, placed by their real world position, under this zone's map
@@ -219,7 +225,7 @@ function draw(){
     ctx.fillStyle = "#e2c6ff"; ctx.fillText(b[2], a + 13, c + 4); });
   drawQuestSpots(ctx, d.quest_spots, (fx, fy) => S(...toImg(d, [fx, fy])), w, h, null);
   if (d.me) {
-    const [a, b] = S(...toImg(d, d.me));
+    const [a, b] = S(...mePx(d));
     ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 8, 0, 7); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = "rgba(240,201,104,.5)"; ctx.beginPath(); ctx.arc(a, b, 14 + (Date.now() / 120 % 8), 0, 7); ctx.stroke();
   }

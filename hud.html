@@ -879,7 +879,11 @@ function renderZoneBuilt(s, U, img, msg){
   // follow: you stay in the middle of the card, the map moves under you (wheel = zoom)
   const sc = hudZoom();
   const KX = U.kx || U.k, KY = U.ky || U.k;
-  const meX = loc.x != null ? KX * loc.x - U.origin[0] : U.size[0] / 2, meY = loc.y != null ? KY * loc.y - U.origin[1] : U.size[1] / 2;
+  // you: the mapper's own spot on the map when it gives one (it does not depend on which zone's coords are in
+  // use, so nothing jumps at a zone's edge), else your coords in the zone the map is drawn in
+  const meG = U.me_g && U.px_per_unit ? [U.px_per_unit * U.me_g[0], U.px_per_unit * U.me_g[1]] : null;
+  const meX = meG ? meG[0] : loc.x != null ? KX * loc.x - U.origin[0] : U.size[0] / 2,
+        meY = meG ? meG[1] : loc.y != null ? KY * loc.y - U.origin[1] : U.size[1] / 2;
   const ox = w / 2 - meX * sc, oy = h / 2 - meY * sc;
   ctx.fillStyle = "#0e0b08"; ctx.fillRect(0, 0, w, h);
   const P = (x, y) => [ox + (KX * x - U.origin[0]) * sc, oy + (KY * y - U.origin[1]) * sc];
@@ -922,7 +926,7 @@ function renderZoneBuilt(s, U, img, msg){
   if (tr.length > 1) { ctx.strokeStyle = "rgba(255,0,255,.9)"; ctx.lineWidth = 2; ctx.beginPath();
     tr.forEach((p, i) => { const [a, b] = P(p[1], p[2]); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); }
   drawQuestSpots(ctx, s.quest_spots, P, w, h, selQuest, true);
-  if (loc.x != null) { const [a, b] = P(loc.x, loc.y);
+  if (meG || loc.x != null) { const [a, b] = meG ? [ox + meG[0] * sc, oy + meG[1] * sc] : P(loc.x, loc.y);
     ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 7, 0, 7); ctx.fill(); ctx.stroke(); }
   ctx.fillStyle = "#9a8f80"; ctx.font = "11px Segoe UI";
   ctx.fillText(`${U.world ? U.continent + " · " : ""}built from ${U.snaps} minimap shots${loc.map_url ? " · click for the M map" : ""}`, 8, h - 8);
