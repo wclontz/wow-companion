@@ -1102,7 +1102,12 @@ function renderQuests(s){
     <div class="small"><a href="${wh}" target="_blank" rel="noopener">Open on Wowhead ↗</a></div>
     <div class="body" style="margin-top:.6vh">${a && a.status === "answered" ? esc(a.answer) :
       s.claude === "missing" ? "No look-up here: Claude is not installed on this PC. The Wowhead link above has the quest." :
-      s.claude === "signed_out" ? "Claude is on this PC but nobody is signed in to it, so it can't look this up. Sign in once: open a terminal (Start, type cmd), paste the line below, press Enter and follow it. Then click the quest again." + (s.claude_login ? `<div style="user-select:all;margin-top:.6vh;padding:.6vh;background:#0e0b08;border-radius:.4vh;word-break:break-all;font-family:Consolas,monospace">${esc(s.claude_login)}</div>` : "") :
+      s.claude === "signed_out" ? (!s.local ? "Claude is on the PC but nobody is signed in to it. Sign in from the HUD on the PC itself." :
+        loginStarted > 0 && Date.now() - loginStarted < 600000 ? "Claude's sign-in window and your browser should be open: sign in there (it may be behind the game). This box changes by itself when you are through; then click the quest again." :
+        "Claude is on this PC but nobody is signed in to it, so it can't look this up. Signing in to the Claude app does not count: the program signs in by itself, once."
+        + `<div style="margin-top:.8vh"><button class="qref" id="claudeLogin">Sign in to Claude</button></div>`
+        + (loginStarted < 0 ? `<div style="margin-top:.6vh">That did not start.</div>` : "")
+        + (s.claude_login ? `<div class="dim small" style="margin-top:.8vh">Or by hand, in a terminal:</div><div style="user-select:all;margin-top:.3vh;padding:.6vh;background:#0e0b08;border-radius:.4vh;word-break:break-all;font-family:Consolas,monospace">${esc(s.claude_login)}</div>` : "")) :
       s.claude !== "on" ? 'Claude look-ups are off. Switch them on with the "Claude: off" button at the top of this card, on the PC the companion runs on (each look-up uses your own Claude plan). The Wowhead link above has the quest.' :
       !a ? "Sending to Claude…" :
       a.status === "queued" ? "Claude did not answer by itself (is it signed in?). The question is kept, and the answer shows here if a Claude session answers it." :
@@ -1147,13 +1152,26 @@ function renderClaudeSw(s){
   b.textContent = out ? "Claude: sign in" : on ? "Claude: on" : "Claude: off";
   b.style.opacity = on && !out ? "" : ".6";
   b.disabled = !s.local;
-  b.title = (out ? "Look-ups are switched on, but nobody is signed in to Claude on this PC: click a quest to see how to sign in."
+  b.title = (out ? "Look-ups are switched on, but nobody is signed in to Claude on this PC. Click to sign in: Claude opens its own window and your browser, and you sign in there."
            : on ? "Clicking a quest has Claude look it up on the web (each look-up uses your own Claude plan)."
                 : "Clicking a quest only gives its Wowhead link.")
           + (s.local ? " Click to switch " + (on ? "off." : "on.") : " Switch it on the PC the companion runs on.");
 }
-$("claudeSw").addEventListener("click", async () => {
+let loginStarted = 0;
+async function claudeLogin(){
   if (!S || !S.local) return;
+  const r = await fetch("/api/claude/login", {method: "POST"});
+  loginStarted = r.ok ? Date.now() : -1;
+  renderQuests(S);
+}
+document.addEventListener("click", e => { if (e.target.id === "claudeLogin") { e.stopPropagation(); claudeLogin(); } });
+$("claudeSw").addEventListener("click", async ev => {
+  if (!S || !S.local) return;
+  if (S.claude === "signed_out") {                 // "Claude: sign in"; Shift-click switches look-ups off instead
+    if (!ev.shiftKey) { claudeLogin(); return; }
+    await fetch("/api/claude", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on: false})});
+    tick(); return;
+  }
   const on = S.claude === "off";
   if (on && !confirm("Have Claude look quests up when you click them?\n\nEach look-up runs your own Claude on this PC and uses your Claude plan. A quest is only looked up once.")) return;
   await fetch("/api/claude", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on})});

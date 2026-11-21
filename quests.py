@@ -335,7 +335,7 @@ _MODE = [0.0, "missing"]
 def claude_mode():
     """Quest look-ups by Claude on this PC: "on" (settings.json "claude": true, and Claude is here), "off" (it is
     here, not switched on) or "missing". Each look-up runs the owner's own Claude, on their plan: so it is asked for."""
-    if time.time() - _MODE[0] > 60:
+    if time.time() - _MODE[0] > (3 if time.time() < _SIGNED["watch"] else 60):
         import wowpath
         try:
             here = bool(find_claude_cli())
@@ -348,7 +348,7 @@ def claude_mode():
     return _MODE[1]
 
 
-_SIGNED = {"t": 0.0, "ok": None, "busy": False}
+_SIGNED = {"t": 0.0, "ok": None, "busy": False, "watch": 0.0}
 
 
 def _check_signed_in():
@@ -366,10 +366,24 @@ def _check_signed_in():
 def signed_in():
     """Is somebody signed in to this PC's Claude? True / False / None (not known yet, or it can't say). Asked with
     `claude auth status`, which costs nothing; in the background, at most every 2 minutes, so no page waits on it."""
-    if time.time() - _SIGNED["t"] > 120 and not _SIGNED["busy"]:
+    every = 4 if time.time() < _SIGNED["watch"] else 120          # right after "sign in": look often
+    if time.time() - _SIGNED["t"] > every and not _SIGNED["busy"]:
         _SIGNED["busy"] = True
         threading.Thread(target=_check_signed_in, daemon=True).start()
     return _SIGNED["ok"]
+
+
+def start_login():
+    """The HUD's "Sign in to Claude": start Claude's own sign-in (`claude auth login`) in a window of its own. It
+    opens the person's browser, and they sign in there themselves: the companion never sees a password or a key.
+    -> True when it was started."""
+    exe = find_claude_cli()
+    if not exe:
+        return False
+    subprocess.Popen([exe, "auth", "login"], creationflags=0x00000010,          # CREATE_NEW_CONSOLE
+                     cwd=tempfile.gettempdir())
+    _SIGNED["watch"] = time.time() + 600                 # see it at once when they are through
+    return True
 
 
 def login_command():

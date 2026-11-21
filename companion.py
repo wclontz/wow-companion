@@ -2322,7 +2322,7 @@ def load_markers():
 
 
 LOCAL_ONLY = ("/api/restore", "/api/import", "/api/trail/clear", "/api/label/rename", "/api/ask", "/api/answer",
-              "/api/claude")
+              "/api/claude", "/api/claude/login")
 
 
 def lan_urls():
@@ -2559,6 +2559,14 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, TypeError):
                 pass
             self._send(200, json.dumps({"on": MAPPER.mapping_on}).encode(), "application/json")
+            return
+        if self.path == "/api/claude/login":          # start Claude's own sign-in on this PC (its window + browser)
+            try:
+                from quests import start_login
+                ok = start_login()
+            except OSError:
+                ok = False
+            self._send(200 if ok else 400, json.dumps({"ok": ok}).encode(), "application/json")
             return
         if self.path == "/api/claude":                # the HUD's switch for quest look-ups (this PC only)
             try:
