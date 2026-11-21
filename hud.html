@@ -1099,9 +1099,11 @@ function renderQuests(s){
   box.hidden = false;
   box.innerHTML = `<h4>${esc(selQuest)} <span class="dim small" style="cursor:pointer;float:right" id="ansClose">✕</span></h4>
     <div class="small"><a href="${wh}" target="_blank" rel="noopener">Open on Wowhead ↗</a></div>
-    <div class="body" style="margin-top:.6vh">${!a ? "Sending to Claude…" :
-      a.status === "answered" ? esc(a.answer) :
-      a.status === "queued" ? "Sent to Claude in your chat session; the answer shows up here in a minute or so." :
+    <div class="body" style="margin-top:.6vh">${a && a.status === "answered" ? esc(a.answer) :
+      s.claude === "missing" ? "No look-up here: Claude is not installed on this PC. The Wowhead link above has the quest." :
+      s.claude !== "on" ? 'Claude look-ups are off on this PC. To have Claude look quests up (each one uses your own Claude plan), run Setup.bat again or put "claude": true in settings.json. The Wowhead link above has the quest.' :
+      !a ? "Sending to Claude…" :
+      a.status === "queued" ? "Claude did not answer by itself (is it signed in?). The question is kept, and the answer shows here if a Claude session answers it." :
       "Asking Claude…"}</div>`;
   const c = $("ansClose"); if (c) c.onclick = e => { e.stopPropagation(); selQuest = null; renderQuests(s); };
 }
@@ -1120,9 +1122,9 @@ Click a quest in the game's log to open it, then press 📖 again to read its fu
   } else {
     const wh = `https://www.wowhead.com/forever/search?q=${encodeURIComponent(qwin.title || "")}`;
     box.innerHTML = `<h4>${qwin.level ? `[${qwin.level}] ` : ""}${esc(qwin.title || "Quest")} <span class="dim small" style="cursor:pointer;float:right" id="ansClose">✕</span></h4>
-      <div class="small"><a href="${wh}" target="_blank" rel="noopener">Open on Wowhead ↗</a> · <a href="#" id="qwinAsk">Ask Claude about this quest</a></div>
+      <div class="small"><a href="${wh}" target="_blank" rel="noopener">Open on Wowhead ↗</a>${S && S.claude === "on" ? ' · <a href="#" id="qwinAsk">Ask Claude about this quest</a>' : ""}</div>
       <div class="body" style="margin-top:.6vh">${esc(qwin.lines.join(String.fromCharCode(10)))}</div>`;
-    $("qwinAsk").onclick = async e => {
+    if ($("qwinAsk")) $("qwinAsk").onclick = async e => {
       e.preventDefault();
       const quest = {level: qwin.level, title: qwin.title, details: qwin.lines.slice(0, 40)};
       selQuest = quest.title; qwin = null;
@@ -1142,7 +1144,7 @@ $("qlist").addEventListener("click", async e => {
   const card = e.target.closest(".q"); if (!card || !S) return;
   const q = (S.quests || [])[+card.dataset.i]; if (!q) return;
   qwin = null; selQuest = q.title; renderQuests(S);
-  if (!askFor(S, q.title)) {
+  if (!askFor(S, q.title) && S.claude === "on") {
     await fetch("/api/ask", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({quest: q})});
     tick();
   }

@@ -308,12 +308,41 @@ class QuestReader(threading.Thread):
 # ---------------------------------------------------------------- lookups
 
 def find_claude_cli():
+    """Claude's command-line program on this PC, however it was installed: settings.json "claude_path", `claude`
+    on the PATH (Claude Code), its usual folder, or the copy that comes inside the Claude desktop app."""
+    import shutil
+    import wowpath
+    given = wowpath.settings().get("claude_path")
+    if given and os.path.isfile(str(given)):
+        return str(given)
+    on_path = shutil.which("claude")
+    if on_path:
+        return on_path
+    home = os.path.expanduser("~")
     patterns = [
+        os.path.join(home, ".local", "bin", "claude.exe"),
+        os.path.join(home, ".claude", "local", "claude.exe"),
         os.path.join(os.environ.get("APPDATA", ""), "Claude", "claude-code", "*", "*", "claude.exe"),
         os.path.join(os.environ.get("LOCALAPPDATA", ""), "Claude-Data", "*", "claude-code", "*", "*", "claude.exe"),
     ]
     paths = [p for pat in patterns for p in glob.glob(pat)]
     return max(paths, key=os.path.getmtime) if paths else None
+
+
+_MODE = [0.0, "missing"]
+
+
+def claude_mode():
+    """Quest look-ups by Claude on this PC: "on" (settings.json "claude": true, and Claude is here), "off" (it is
+    here, not switched on) or "missing". Each look-up runs the owner's own Claude, on their plan: so it is asked for."""
+    if time.time() - _MODE[0] > 60:
+        import wowpath
+        try:
+            here = bool(find_claude_cli())
+        except Exception:
+            here = False
+        _MODE[:] = [time.time(), "missing" if not here else "on" if wowpath.settings().get("claude") is True else "off"]
+    return _MODE[1]
 
 
 class Asker:

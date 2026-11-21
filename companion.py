@@ -2405,6 +2405,11 @@ class Handler(BaseHTTPRequestHandler):
             snap["strip"] = strip_summary()
             snap["gdi"] = gdi_handles()
             snap["lan"] = lan_urls()
+            try:
+                from quests import claude_mode
+                snap["claude"] = claude_mode()               # "on" / "off" / "missing": quest look-ups
+            except Exception:
+                snap["claude"] = "missing"
             snap["local"] = self.client_address[0] in ("127.0.0.1", "::1")
             if LOC:
                 from location import map_file
@@ -2554,9 +2559,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/ask" and ASKER:
             try:
                 body = self._json()
+                from quests import claude_mode
+                if claude_mode() != "on":            # no look-up unless this PC's owner switched it on
+                    self._send(200, json.dumps({"status": claude_mode()}).encode(), "application/json")
+                    return
                 snap = COMP.snapshot()
-                ctx = {"level": (snap.get("xp") or {}).get("level"), "zone": snap.get("zone"),
-                       "class": "priest"}
+                ctx = {"level": (snap.get("xp") or {}).get("level"), "zone": snap.get("zone")}
                 rec = ASKER.ask(body["quest"], ctx)
                 self._send(200, json.dumps({"id": rec["id"], "status": rec["status"],
                                             "answer": rec.get("answer")}).encode(), "application/json")

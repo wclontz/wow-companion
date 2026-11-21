@@ -2,11 +2,13 @@
   1. installs the two Python packages the companion needs (numpy, Pillow),
   2. finds the game's folder (asks when it can't) and remembers it in settings.json,
   3. copies the Companion Beacon add-on into the game's Interface\\AddOns folder,
-  4. offers to start the companion by itself whenever the game runs.
+  4. offers to start the companion by itself whenever the game runs,
+  5. when Claude is installed, asks whether clicking a quest may have Claude look it up (on your own Claude plan).
 Safe to run again (after an update: it copies the newer add-on over the old one).
 
   python setup_companion.py                       asks its questions
   python setup_companion.py --wow "D:\\Games\\World of Warcraft" --autostart      no questions (or --no-autostart)
+  ... --claude / --no-claude                      quest look-ups by Claude on or off (no flag: left as it is)
 """
 import os
 import shutil
@@ -22,7 +24,7 @@ def arg(name):
     return sys.argv[sys.argv.index(name) + 1] if name in sys.argv and sys.argv.index(name) + 1 < len(sys.argv) else None
 
 
-QUIET = "--wow" in sys.argv or "--autostart" in sys.argv or "--no-autostart" in sys.argv
+QUIET = any(f in sys.argv for f in ("--wow", "--autostart", "--no-autostart", "--claude", "--no-claude"))
 
 
 def ask(q):
@@ -102,6 +104,32 @@ def autostart():
         print("   It starts with Windows from the next sign-in. To undo: python autostart.pyw --uninstall")
 
 
+def claude():
+    import wowpath
+    try:
+        from quests import find_claude_cli
+        here = bool(find_claude_cli())
+    except Exception:
+        here = False
+    print("5. Quest look-ups by Claude")
+    if not here:
+        print("   Claude is not installed on this PC: quests get a Wowhead link only. Nothing to set.")
+        return
+    now = wowpath.settings().get("claude") is True
+    if "--claude" in sys.argv or "--no-claude" in sys.argv:
+        want = "--claude" in sys.argv
+    elif QUIET:
+        want = now
+    else:
+        print("   Claude is installed here. Clicking a quest on the HUD can have it look the quest up on the web")
+        print("   and answer in a few lines. Each look-up runs your own Claude, on your plan.")
+        a = ask(f"   Switch that on? [y/N{', Enter keeps it on' if now else ''}] ").lower()
+        want = now if not a else a.startswith("y")
+    if want != now:
+        wowpath.save_setting("claude", want)
+    print("   On." if want else '   Off. ("claude": true in settings.json switches it on later.)')
+
+
 def main():
     print("WoW Companion setup\n")
     if sys.version_info < (3, 10):
@@ -115,6 +143,7 @@ def main():
         ok = False
         print("   Skipped the add-on. Run Setup.bat again once the game is installed, or with the game running.")
     autostart()
+    claude()
     import wowpath
     print("\nWhat is left, in the game:")
     print("  - Restart the game. On the character screen click AddOns and tick Companion Beacon")

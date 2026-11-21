@@ -53,12 +53,25 @@ device on the same network.
   renaming labels and quest look-ups only work on the PC itself.
 - Anyone on your network can open the pages. To keep them to this PC, put `{"lan": false}` in `settings.json`.
 
+## Quest look-ups by Claude (optional)
+
+Click a quest on the HUD and you get a Wowhead link. If Claude (the desktop app or Claude Code) is installed on
+the PC, the companion can also have it look the quest up on the web and answer in a few lines: where to go, what
+to do, anything worth knowing.
+
+- It is off until you switch it on: Setup.bat asks, or put `"claude": true` in `settings.json`.
+- Each look-up runs your own Claude, signed in as you, on your plan. Nothing goes through anyone else's account.
+- What is sent: the quest's name, level and tracker text, your level and zone. An answer is kept in `asks.jsonl`
+  and reused, so a quest is looked up once.
+- Only from the PC itself: a tablet on the network can read answers, not start look-ups.
+- Without Claude the companion works the same, minus those answers.
+
 ## Settings (optional)
 
 `settings.json` next to `companion.py`; Setup writes it when it needs to:
 
 ```json
-{"wow_dir": "D:\\Games\\World of Warcraft", "port": 8765, "lan": true}
+{"wow_dir": "D:\\Games\\World of Warcraft", "port": 8765, "lan": true, "claude": false}
 ```
 
 ## Good to know
