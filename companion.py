@@ -365,7 +365,8 @@ class Companion:
         self.heal_taken = 0
         self.shield_absorbed = 0
         self.spells = self._new_spells()
-        self._spell_sets = {}                # the other characters' spell numbers this session: guid -> (spells, spell_eff)
+        self._chars = {}                     # the other characters' session numbers: guid -> {attribute: value}
+        self._char_spans = []                # [log time, guid]: who was being played from when (for the chat log)
         self.taken_by = defaultdict(lambda: {"dmg": 0, "hits": 0, "max": 0})
         self.failed = defaultdict(int)
         self.biggest_hit = None              # {amt, spell, target, crit, t}
@@ -651,13 +652,12 @@ class Companion:
             if g != self.me and g.startswith("Player-") and f & MINE and f & T_PLAYER and short_name(n):
                 if self.me is not None:                      # the buffs seen on / off were the other character's
                     self.my_auras, self.my_removed = {}, {}
-                    # ...and so were the spells: each character keeps its own (a warlock has no Lesser Heal to
-                    # count casts of). Coming back to a character brings its numbers back.
                     for m_ in self.grp.members.values():     # the group's "you" is this character now
                         m_["me"] = m_["guid"] == g
-                    self._spell_sets[self.me] = (self.spells, self.spell_eff)
-                    self.spells, self.spell_eff = self._spell_sets.pop(g, None) or (self._new_spells(), self._new_spell_eff())
-                    self._se_cache = None
+                    # ...and so were the kills, deaths, pace, damage, spells, XP and loot: each character keeps
+                    # its own session numbers. Coming back to a character brings its numbers back.
+                    self._switch_character(g)
+                self._char_spans.append([t, g])
                 self.me, self.me_name = g, short_name(n)
                 break
 
@@ -1029,6 +1029,7 @@ class Companion:
         if rid in self._mf_seen:
             return                                   # replaying a log we've already filed
         rec = {"id": rid, "name": d["name"], "t": round(d["t"], 1), "lvl": self._my_level_at(d["t"]),
+               "who": self.me_name,                 # (since 2026-11-21: pace is each character's own)
                "me": d["me"], "it": d["it"], "dmg": d["dmg"],
                # only YOUR fights count for pace (in a group it pounds you while you heal)
                "solo": d["me"] >= 2 and d["it"] >= 2 and d["me"] >= 0.6 * max(1, d["all"]),
@@ -1043,7 +1044,8 @@ class Companion:
 
     def _fights_for(self, name):
         """This mob's fights at your level (current or one below). If none, the latest older level, marked."""
-        recs = list(self.mob_fights.get(name, []))
+        # this character's fights, and the ones kept before fights said whose they were
+        recs = [r for r in self.mob_fights.get(name, []) if r.get("who") in (None, self.me_name)]
         cur = self._level_now()
         live = [{"lvl": cur, "me": d["me"], "it": d["it"], "dmg": d["dmg"], "m_att": d["m_att"], "m_miss": d["m_miss"],
                  "i_att": d["i_att"], "i_miss": d["i_miss"],
@@ -1121,6 +1123,24 @@ class Companion:
             print("note save failed:", e, file=sys.stderr)
 
     def feed_chat(self, line):
+        """A chat log line. The chat log is read after the combat log, so a line may belong to a character that
+        is not the one being played now: its XP, loot and money go to whoever was being played at its time."""
+        t = parse_ts(line.split("  ", 1)[0]) if "  " in line else None
+        owner = self._who_at(t) if t is not None else None
+        other = self._chars.get(owner) if owner is not None and owner != self.me else None
+        if other is None:
+            return self._feed_chat(line)
+        mine = {k: getattr(self, k) for k in self.CHAT_ATTRS}
+        for k in self.CHAT_ATTRS:
+            setattr(self, k, other[k])
+        try:
+            self._feed_chat(line)
+        finally:
+            for k in self.CHAT_ATTRS:
+                other[k] = getattr(self, k)
+                setattr(self, k, mine[k])
+
+    def _feed_chat(self, line):
         t = None
         text = line
         if "  " in line:
@@ -1472,6 +1492,43 @@ class Companion:
                     return z
                 break                                        # an area on both sides of a zone line: no help
         return self.cur_map if fallback else None
+
+    # what one character's session is made of (everything else is the world's: mobs' moves, zones, the group)
+    PER_CHAR = ("segments", "player", "trail", "distance", "timeline", "rest_start", "rest_time", "rest_count",
+                "dmg_done", "dmg_taken", "heal_done", "overheal", "heal_taken", "shield_absorbed", "spells",
+                "spell_eff", "taken_by", "failed", "biggest_hit", "biggest_taken", "kills", "deaths", "last_hit_by",
+                "last_target", "on_me", "stolen", "fight", "pre_pull_mana", "cast_start", "fights", "combat_time",
+                "lowest_hp_pct", "lowest_hp_info", "_dinged", "duels", "mobstats",
+                "chat_active", "chat_xp", "chat_levels", "loot", "copper")
+    CHAT_ATTRS = ("chat_active", "chat_xp", "chat_levels", "loot", "copper")
+    # the XP bar's own series (set in __init__, not reset): a character's too
+    PER_CHAR_SCREEN = {"scr_last_xp": None, "scr_seen_levelups": 0, "scr_jumps": list, "scr_series": list,
+                       "jump_names": dict, "scr_pending": None, "portrait_level": None}
+
+    def _switch_character(self, guid):
+        """Put the session numbers of the character played until now away, and take out `guid`'s (new ones the
+        first time it is seen this session)."""
+        keep = {k: getattr(self, k) for k in self.PER_CHAR}
+        keep.update({k: getattr(self, k) for k in self.PER_CHAR_SCREEN if hasattr(self, k)})
+        self._chars[self.me] = keep
+        took = self._chars.pop(guid, None)
+        if took is None:
+            blank = object.__new__(Companion)
+            blank.reset()
+            took = {k: getattr(blank, k) for k in self.PER_CHAR}
+            took.update({k: (v() if callable(v) else v) for k, v in self.PER_CHAR_SCREEN.items()})
+        for k, v in took.items():
+            setattr(self, k, v)
+        self._se_cache = None
+
+    def _who_at(self, t):
+        """The character being played at log time t (a guid), or None before any is known."""
+        who = None
+        for t0, g in self._char_spans:
+            if t0 > t and who is not None:
+                break
+            who = g
+        return who
 
     @staticmethod
     def _new_spells():
