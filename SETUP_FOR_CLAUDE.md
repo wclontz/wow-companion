@@ -28,6 +28,8 @@ sends input to the game. Keep it that way.
      add `--claude` to the setup command; they can switch it themselves with the "Claude: on / off" button on the
      HUD's Quests card (`"claude"` in `settings.json`). `quests.py`
      `find_claude_cli` is how it finds the program; `"claude_path"` in `settings.json` names it outright.
+     It must be signed in by itself (`claude auth status` says; the desktop app's sign-in does not count):
+     `claude auth login` is theirs to run, not yours.
 3. Tell them what only they can do, in the game:
    - restart the game; on the character screen click AddOns and tick Companion Beacon ("Load out of date
      AddOns" too if it is greyed out);

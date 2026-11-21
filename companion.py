@@ -2408,7 +2408,10 @@ class Handler(BaseHTTPRequestHandler):
             snap["lan"] = lan_urls()
             try:
                 from quests import claude_mode
-                snap["claude"] = claude_mode()               # "on" / "off" / "missing": quest look-ups
+                snap["claude"] = claude_mode()               # "on" / "off" / "signed_out" / "missing": quest look-ups
+                if snap["claude"] == "signed_out" and self.client_address[0] in ("127.0.0.1", "::1"):
+                    from quests import login_command
+                    snap["claude_login"] = login_command()
             except Exception:
                 snap["claude"] = "missing"
             snap["local"] = self.client_address[0] in ("127.0.0.1", "::1")
@@ -2569,7 +2572,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 body = self._json()
                 from quests import claude_mode
-                if claude_mode() != "on":            # no look-up unless this PC's owner switched it on
+                if claude_mode() != "on":            # no look-up unless this PC's owner switched it on (and is signed in)
                     self._send(200, json.dumps({"status": claude_mode()}).encode(), "application/json")
                     return
                 snap = COMP.snapshot()

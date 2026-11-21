@@ -62,6 +62,8 @@ to do, anything worth knowing.
 - It is off until you switch it on: the **Claude: off / on** button at the top of the HUD's Quests card (it only
   shows when Claude is installed, and only works on the PC itself). Setup.bat asks too.
 - Each look-up runs your own Claude, signed in as you, on your plan. Nothing goes through anyone else's account.
+- Claude has to be signed in as a command-line program, which is separate from being signed in to the desktop
+  app. If it is not, the button reads **Claude: sign in** and clicking a quest shows the one line to run.
 - What is sent: the quest's name, level and tracker text, your level and zone. An answer is kept in `asks.jsonl`
   and reused, so a quest is looked up once.
 - Only from the PC itself: a tablet on the network can read answers, not start look-ups.

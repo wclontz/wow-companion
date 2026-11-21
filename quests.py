@@ -341,15 +341,48 @@ def claude_mode():
             here = bool(find_claude_cli())
         except Exception:
             here = False
-        _MODE[:] = [time.time(), "missing" if not here else "on" if wowpath.settings().get("claude") is True else "off"]
+        mode = "missing" if not here else "on" if wowpath.settings().get("claude") is True else "off"
+        if mode == "on" and signed_in() is False:
+            mode = "signed_out"                      # switched on, but this PC's Claude has nobody signed in
+        _MODE[:] = [time.time(), mode]
     return _MODE[1]
+
+
+_SIGNED = {"t": 0.0, "ok": None, "busy": False}
+
+
+def _check_signed_in():
+    try:
+        exe = find_claude_cli()
+        out = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=40, creationflags=NO_WINDOW, cwd=tempfile.gettempdir())
+        _SIGNED["ok"] = bool(json.loads(out.stdout).get("loggedIn"))
+    except Exception:
+        _SIGNED["ok"] = None                         # an older Claude without `auth status`: not known
+    _SIGNED["t"], _SIGNED["busy"] = time.time(), False
+    _MODE[0] = 0.0
+
+
+def signed_in():
+    """Is somebody signed in to this PC's Claude? True / False / None (not known yet, or it can't say). Asked with
+    `claude auth status`, which costs nothing; in the background, at most every 2 minutes, so no page waits on it."""
+    if time.time() - _SIGNED["t"] > 120 and not _SIGNED["busy"]:
+        _SIGNED["busy"] = True
+        threading.Thread(target=_check_signed_in, daemon=True).start()
+    return _SIGNED["ok"]
+
+
+def login_command():
+    """What to type to sign this PC's Claude in (the full path: it is often not on the PATH)."""
+    exe = find_claude_cli()
+    return f'"{exe}" auth login' if exe else None
 
 
 def set_claude(on):
     """The HUD's switch: remember it in settings.json. -> the mode now ("missing" when Claude is not on this PC)."""
     import wowpath
     wowpath.save_setting("claude", bool(on))
-    _MODE[0] = 0.0
+    _MODE[0] = _SIGNED["t"] = 0.0
     return claude_mode()
 
 
@@ -421,6 +454,9 @@ class Asker:
             if out.returncode == 0 and text and "not logged in" not in text.lower():
                 self.answer(rec["id"], text, by="claude-cli")
                 return
+            if "not logged in" in text.lower():
+                _SIGNED.update(ok=False, t=time.time())
+                _MODE[0] = 0.0
         except (OSError, subprocess.TimeoutExpired):
             pass
         self._mark(rec, "queued")

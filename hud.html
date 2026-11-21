@@ -1102,6 +1102,7 @@ function renderQuests(s){
     <div class="small"><a href="${wh}" target="_blank" rel="noopener">Open on Wowhead ↗</a></div>
     <div class="body" style="margin-top:.6vh">${a && a.status === "answered" ? esc(a.answer) :
       s.claude === "missing" ? "No look-up here: Claude is not installed on this PC. The Wowhead link above has the quest." :
+      s.claude === "signed_out" ? "Claude is on this PC but nobody is signed in to it, so it can't look this up. Sign in once: open a terminal (Start, type cmd), paste the line below, press Enter and follow it. Then click the quest again." + (s.claude_login ? `<div style="user-select:all;margin-top:.6vh;padding:.6vh;background:#0e0b08;border-radius:.4vh;word-break:break-all;font-family:Consolas,monospace">${esc(s.claude_login)}</div>` : "") :
       s.claude !== "on" ? 'Claude look-ups are off. Switch them on with the "Claude: off" button at the top of this card, on the PC the companion runs on (each look-up uses your own Claude plan). The Wowhead link above has the quest.' :
       !a ? "Sending to Claude…" :
       a.status === "queued" ? "Claude did not answer by itself (is it signed in?). The question is kept, and the answer shows here if a Claude session answers it." :
@@ -1139,20 +1140,21 @@ let qwinSeenT = null;            // show each refresh's quest-window read once
 // the switch for quest look-ups by Claude: only on the PC itself, and only when Claude is installed there
 function renderClaudeSw(s){
   const b = $("claudeSw"); if (!b) return;
-  const here = s.claude === "on" || s.claude === "off";
+  const here = s.claude === "on" || s.claude === "off" || s.claude === "signed_out";
   b.hidden = !here; $("qref").style.marginLeft = here ? "" : "auto";
   if (!here) return;
-  const on = s.claude === "on";
-  b.textContent = on ? "Claude: on" : "Claude: off";
-  b.style.opacity = on ? "" : ".6";
+  const on = s.claude !== "off", out = s.claude === "signed_out";
+  b.textContent = out ? "Claude: sign in" : on ? "Claude: on" : "Claude: off";
+  b.style.opacity = on && !out ? "" : ".6";
   b.disabled = !s.local;
-  b.title = (on ? "Clicking a quest has Claude look it up on the web (each look-up uses your own Claude plan)."
+  b.title = (out ? "Look-ups are switched on, but nobody is signed in to Claude on this PC: click a quest to see how to sign in."
+           : on ? "Clicking a quest has Claude look it up on the web (each look-up uses your own Claude plan)."
                 : "Clicking a quest only gives its Wowhead link.")
           + (s.local ? " Click to switch " + (on ? "off." : "on.") : " Switch it on the PC the companion runs on.");
 }
 $("claudeSw").addEventListener("click", async () => {
   if (!S || !S.local) return;
-  const on = S.claude !== "on";
+  const on = S.claude === "off";
   if (on && !confirm("Have Claude look quests up when you click them?\n\nEach look-up runs your own Claude on this PC and uses your Claude plan. A quest is only looked up once.")) return;
   await fetch("/api/claude", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on})});
   tick();
@@ -1166,7 +1168,8 @@ $("qlist").addEventListener("click", async e => {
   const card = e.target.closest(".q"); if (!card || !S) return;
   const q = (S.quests || [])[+card.dataset.i]; if (!q) return;
   qwin = null; selQuest = q.title; renderQuests(S);
-  if (!askFor(S, q.title) && S.claude === "on") {
+  const had = askFor(S, q.title);
+  if ((!had || had.status === "queued") && S.claude === "on") {       // one that got no answer is asked again
     await fetch("/api/ask", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({quest: q})});
     tick();
   }
