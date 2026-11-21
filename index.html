@@ -232,7 +232,7 @@ function renderVs(s){
   const row = t || s.last_kill_row;
   if (!row) { box.innerHTML = `<span class="sub">No fight yet.</span>`; return; }
   const name = esc(row.name);
-  const mobPart = t && t.maxhp
+  const mobPart = t && t.maxhp && t.hp != null      // (hp null: named by the add-on, health not read on this layout)
     ? `${bar("mob", t.hp, t.maxhp)}
        <div class="headline">${t.hits_left != null ? `<b>${t.hits_left}</b> more ${esc(t.best_spell)}${t.hits_left===1?"":"s"} to finish it` : "—"}</div>`
     : `<div class="headline">${row.hits_to_kill != null ? `<b>${row.hits_to_kill}</b> ${esc(row.best_spell)}s to kill one from full` : "—"}</div>`;

@@ -493,12 +493,14 @@ function renderVs(s){
               player: ["Player", "#5a8dff"]}[t.reaction] || null;
   $("mobName").innerHTML = esc(t.name) + (t.heals ? `<div class="healwarn">⚠ Heals: ${healWarn(t.heals)}. Burst it down or interrupt.</div>` : "");
   $("mobLvl").innerHTML = (RX ? `<b style="color:${RX[1]}">${RX[0]}</b> · ` : "") + (t.level ? `level ${esc(t.level)} ` : "") + '<span class="live">LIVE</span>';
-  setBar("mobBar", t.frac, 1);
-  $("mobHp").textContent = t.maxhp ? `${fmt(t.hp)} / ${fmt(t.maxhp)}` : `${Math.round(t.frac * 100)}%`;
+  // (frac null: the add-on names the target but its health can't be read on this layout: count from full health)
+  setBar("mobBar", t.frac ?? 1, 1);
+  $("mobHp").textContent = t.frac == null ? (t.maxhp ? `${fmt(t.maxhp)} when full · health not read here` : "health not read here")
+    : t.maxhp ? `${fmt(t.hp)} / ${fmt(t.maxhp)}` : `${Math.round(t.frac * 100)}%`;
   const notFight = t.reaction === "friendly" || t.reaction === "player";
   $("hitsKill").textContent = notFight ? "—" : (t.hits_left ?? "—");
   $("hitsKillTxt").textContent = notFight ? (t.reaction === "player" ? "another player, not a fight" : "friendly, not a fight")
-    : t.best_spell ? `${t.best_spell}${t.hits_left === 1 ? "" : "s"} to kill · avg ${fmt(t.best_avg)}` : "new mob: hit it a few times to learn its numbers";
+    : t.best_spell ? `${t.best_spell}${t.hits_left === 1 ? "" : "s"} to kill${t.frac == null ? " from full" : ""} · avg ${fmt(t.best_avg)}` : t.frac == null ? "no fight numbers for it yet" : "new mob: hit it a few times to learn its numbers";
   // attack pace: you : it, and the race to the kill
   const pc = t.pace, rc = t.race;
   $("pace").innerHTML = notFight || !pc ? (notFight ? "" : `<span class="dim small">Pace: needs a fight or two with it</span>`)
@@ -547,8 +549,9 @@ function renderUnder(s){
   if (dmg && p.power != null) {
     const n = Math.floor(p.power / dmg.cost);
     $("castsLeft").textContent = n;
-    $("castsLeftTxt").innerHTML = `${esc(dmg.name)}${n === 1 ? "" : "s"} left` +
-      (heal ? ` · <b style="color:#8fb4ff">${Math.floor(p.power / heal.cost)}</b> ${esc(heal.name)}${Math.floor(p.power / heal.cost) === 1 ? "" : "s"}` : "");
+    const many = (name, k) => k === 1 || /[sy]$/.test(name) ? `${esc(name)} cast${k === 1 ? "" : "s"}` : esc(name) + "s";   // "Bane of Agony casts", not "Agonys"
+    $("castsLeftTxt").innerHTML = `${many(dmg.name, n)} left` +
+      (heal ? ` · <b style="color:#8fb4ff">${Math.floor(p.power / heal.cost)}</b> ${many(heal.name, Math.floor(p.power / heal.cost))}` : "");
   } else { $("castsLeft").textContent = "—"; }
   $("liveTag").hidden = !p.live;
 }

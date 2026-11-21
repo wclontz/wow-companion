@@ -40,12 +40,12 @@ def _dist(a, b):
 def _swap_in(tmp, dst):
     """os.replace that waits out a page reading the file this instant (Windows refuses the swap: 'Access is
     denied' - eight of those in minimap_errors.log, each one a save that didn't happen)."""
-    for i in range(8):
+    for i in range(40):                          # up to 2 s (0.4 s was not always enough: 2026-11-21 10:40)
         try:
             os.replace(tmp, dst)
             return
         except PermissionError:
-            if i == 7:
+            if i == 39:
                 raise
             time.sleep(0.05)
 

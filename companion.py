@@ -635,6 +635,8 @@ class Companion:
                     self.my_auras, self.my_removed = {}, {}
                     # ...and so were the spells: each character keeps its own (a warlock has no Lesser Heal to
                     # count casts of). Coming back to a character brings its numbers back.
+                    for m_ in self.grp.members.values():     # the group's "you" is this character now
+                        m_["me"] = m_["guid"] == g
                     self._spell_sets[self.me] = (self.spells, self.spell_eff)
                     self.spells, self.spell_eff = self._spell_sets.pop(g, None) or (self._new_spells(), self._new_spell_eff())
                     self._se_cache = None
@@ -1309,13 +1311,29 @@ class Companion:
             return self.screen["hp"] * self.player["maxhp"]
         return self.player["hp"]
 
+    @staticmethod
+    def _strip_target():
+        """(name, level) of the target as the add-on's strip gives it right now, or (None, None)."""
+        try:
+            import beacon
+            d = beacon.latest()
+            name = ((d or {}).get("texts") or {}).get("target")
+            lvl = ((d or {}).get("stats") or {}).get("target_level")
+            return (name, lvl if lvl and lvl > 0 else None) if name else (None, None)
+        except Exception:
+            return None, None
+
     def _target_now(self):
         """What's targeted right now, from the screen only: name OCR'd off the target frame,
         health from its bar. The log just supplies averages (your hit size, its hit, max HP)."""
         scr_t = self.screen.get("target") if self.screen_live() else None
+        ocr_name, strip_lvl = self.ocr_target, None
         if scr_t is None:
-            return None
-        ocr_name = self.ocr_target
+            # no target frame where the screen reader looks (another character's layout): the add-on still says
+            # who is targeted and its level. Its health is not known then, so the card counts from full health.
+            ocr_name, strip_lvl = self._strip_target()
+            if not ocr_name:
+                return None
         name = None
         if ocr_name:
             known = {n for n, ms in self.mobstats.items() if ms["my_dmg"] or ms["their_hits"] or ms["maxhp"]}
@@ -1323,12 +1341,15 @@ class Companion:
             name = best if best and SequenceMatcher(None, best.lower(), ocr_name.lower()).ratio() >= 0.75                 else ocr_name.title()
         hm = self._hits_math(name) if name else self._hits_math(None)
         maxhp = hm["mob_hp"]
-        hp = round(scr_t * maxhp) if maxhp else None
+        hp = round(scr_t * maxhp) if maxhp and scr_t is not None else None
         left = math.ceil(hp / hm["best_avg"]) if hp and hm["best_avg"] else None
+        if scr_t is None:
+            left = hm["hits_to_kill"]
         lv = sorted({x.get("level") for x in self.units.values() if name and x.get("name") == name and x.get("level")})
-        return {"name": name or "Reading name…", "level": (lv[0] if len(lv) == 1 else f"{lv[0]}-{lv[-1]}") if lv else None,
-                "hp": hp, "maxhp": maxhp, "hits_left": left, "live": True, "assumed": False, "frac": scr_t,
-                "reaction": self.screen.get("reaction"),
+        return {"name": name or "Reading name…",
+                "level": strip_lvl or ((lv[0] if len(lv) == 1 else f"{lv[0]}-{lv[-1]}") if lv else None),
+                "hp": hp, "maxhp": maxhp, "hits_left": left, "live": True, "assumed": scr_t is None, "frac": scr_t,
+                "reaction": self.screen.get("reaction") if scr_t is not None else None,
                 "heals": self.mob_heal_info(name) if name else None,
                 "info": MOBS.lookup(name) if MOBS and name and self.screen.get("reaction") not in ("player",) else None,
                 "moves": self.mob_moves_info(name) if name else [],
@@ -2360,11 +2381,14 @@ def quest_spots(frame=None):
         return []
     import quadmap
     titles = {q.get("title") for q in (QUESTS.quests if QUESTS else [])} or None
+    done = {q.get("title") for q in (QUESTS.quests if QUESTS else []) if q.get("done")}
     bb = quadmap.zone_bounds()
     low = {z.lower(): z for z in bb}
     bf = bb.get(frame) if frame else None
     out = []
     for s in ASKER.spots(titles):
+        if s["quest"] in done and s.get("kind") == "objective":
+            continue                                             # everything collected: only the way back is left
         s = dict(s)
         zone = low.get(s["zone"].lower())
         if zone:
@@ -2398,8 +2422,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.end_headers()
+            self.wfile.write(body)
+        except ConnectionError:
+            pass                                  # the page closed or reloaded mid-answer: nothing to report
 
     def do_GET(self):
         page = {"/": "index.html", "/index.html": "index.html", "/hud": "hud.html", "/hud.html": "hud.html",
