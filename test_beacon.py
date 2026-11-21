@@ -189,6 +189,34 @@ if beacon.text_name(9) != "minimap" or beacon.text_name(10) != "name" or beacon.
         or beacon.minimap(None) is not None:
     ok = False
     print("FAIL minimap spot")
+# the bars above the strip (version 7): how much of each is lit; blue, covered or broken up = not trusted
+def bars_img(fracs, noise=0):
+    w, c = beacon.CELLS * beacon.CELL, beacon.CELL
+    im = np.zeros((beacon.BARS * c, w, 3), dtype=np.float32)
+    for i, fr in enumerate(fracs):
+        y = (beacon.BARS - 1 - i) * c
+        if fr == "blue":
+            im[y:y + c, :, 2] = 255
+        elif fr == "window":
+            im[y:y + c] = (200, 190, 180)
+        elif fr == "holes":
+            im[y:y + c, 0:40, 1] = 255
+            im[y:y + c, 60:90, 1] = 255
+        else:
+            im[y:y + c, :round(fr * w), 1] = 255
+    if noise:
+        im = np.clip(im + rnd.uniform(-noise, noise), 0, 255)
+    return Image.fromarray(im.astype(np.uint8))
+
+
+for fracs in ([0, 0.5, 1], [0.25, 0.754, 0.011], [1, 1, 0], ["blue", 0.3, "window"], [0.6, "holes", 0.9]):
+    for noise in (0, 12):
+        got = beacon.read_bars(bars_img(fracs, noise))
+        want = [None if isinstance(fr, str) else fr for fr in fracs]
+        if not all((g is None) == (w_ is None) and (g is None or abs(g - w_) <= 0.004) for g, w_ in zip(got, want)):
+            ok = False
+            print("FAIL bars", fracs, noise, got)
+
 # a damaged row is left out; the others are still read. Older strips (versions 1 and 2) give row 1 only.
 bad2, bad3 = beacon.encode_stats({"level": 21, "xp": 500, "xpmax": 1000}), beacon.encode_page(1, 1, b"Elwynn Forest", 0, 3)
 bad2[3] ^= 9

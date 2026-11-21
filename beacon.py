@@ -15,7 +15,8 @@ import time
 
 import numpy as np
 
-CELL, CELLS, ROWS, VERSION = 4, 47, 6, 6
+CELL, CELLS, ROWS, VERSION = 4, 47, 6, 7
+BARS = 3                                                    # the bars above the strip (version 7)
 PAGE = 20
 TEXT_ROWS = (3, 4, 5, 6)
 
@@ -209,7 +210,7 @@ def decode(img):
         for k in range(n):
             x = x * 64 + v[i + k]
         return x
-    if get(46, 2) != sum(v[i] * (i - 7) for i in range(8, 46)) % 4096 or v[8] not in (1, 2, 3, 4, 5, VERSION):
+    if get(46, 2) != sum(v[i] * (i - 7) for i in range(8, 46)) % 4096 or v[8] not in (1, 2, 3, 4, 5, 6, VERSION):
         return None
     flags, z = v[10], v[11]
     d = {"seq": v[9], "indoors": bool(flags & 2), "taxi": bool(flags & 4), "instance": bool(flags & 8),
@@ -239,6 +240,28 @@ def decode(img):
     return d
 
 
+def read_bars(img):
+    """The picture of the BARS bars above the strip (the strip's width, BARS * CELL high; bar 1 is the lowest) ->
+    how full each is, 0-1, or None for a bar that can't be trusted: blue (the game refused the add-on), covered by
+    something, or not one lit stretch from the left."""
+    a = np.asarray(img.convert("RGB"), dtype=np.float32)
+    if a.shape[0] < BARS * CELL or a.shape[1] < CELLS * CELL:
+        return [None] * BARS
+    out = []
+    for i in range(BARS):
+        y = (BARS - 1 - i) * CELL
+        px = a[y + 1:y + 3, :CELLS * CELL].mean(0)          # one colour per column, off the bar's middle rows
+        r, g, b = px[:, 0], px[:, 1], px[:, 2]
+        lit = (g > 128) & (r < 110) & (b < 110)
+        dark = (r < 70) & (g < 70) & (b < 70)
+        n = int(lit.sum())
+        if (lit | dark).mean() < 0.98 or not lit[:n].all():
+            out.append(None)
+        else:
+            out.append(round(n / lit.size, 4))
+    return out
+
+
 def read():
     """The strip off the screen right now -> the reading (with "t"), or None. With the background reader
     running, its look of the last half second is the answer (no second grab)."""
@@ -256,14 +279,20 @@ def _look():
         return None
     # the strip sits in the window's bottom-right corner (since 2026-11-19); an add-on from before that drew
     # it top-left, so that corner is looked at when the first has nothing
-    w, h = CELLS * CELL, ROWS * CELL
-    for box in ((rect[2] - w, rect[3] - h, rect[2], rect[3]), (rect[0], rect[1], rect[0] + w, rect[1] + h)):
-        img = fastgrab.grab(box)
-        d = decode(img) if img is not None else None
-        if d:
-            d["t"] = time.time()
-            return d
-    return None
+    w, h, bh = CELLS * CELL, ROWS * CELL, BARS * CELL
+    img = fastgrab.grab((rect[2] - w, rect[3] - h - bh, rect[2], rect[3]))      # the strip with its bars above it
+    d = decode(img.crop((0, bh, w, bh + h))) if img is not None else None
+    if d:
+        if d.get("version", 1) >= 7 and d.get("stats"):
+            hp, power, target = read_bars(img.crop((0, 0, w, bh)))
+            d["stats"].update(hp_frac=hp, power_frac=power, target_frac=target if d["stats"]["target"] else None)
+        d["t"] = time.time()
+        return d
+    img = fastgrab.grab((rect[0], rect[1], rect[0] + w, rect[1] + h))           # (an add-on from before 2026-11-19)
+    d = decode(img) if img is not None else None
+    if d:
+        d["t"] = time.time()
+    return d
 
 
 class Texts:

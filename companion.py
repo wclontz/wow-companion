@@ -177,7 +177,10 @@ def strip_summary():
                 "combat": st["combat"], "resting": st["resting"], "group": st["group"],
                 "health_known": st["hpmax"] is not None, "power_known": st["powermax"] is not None,
                 "label": tx.get("label"), "zone": tx.get("zone"), "target": tx.get("target"),
-                "target_level": st["target_level"], "target_hp": st.get("target_hp"),
+                "target_level": st["target_level"],
+                "target_hp": st.get("target_hp") if st.get("target_hp") is not None else
+                (round(st["target_frac"] * 100, 1) if st.get("target_frac") is not None else None),
+                "bars": [st.get("hp_frac"), st.get("power_frac"), st.get("target_frac")],
                 "target_reaction": "player" if st.get("target_player") else st.get("target_reaction"),
                 "target_tapped": st.get("target_tapped"), "party": beacon.party(d), "gear": beacon.gear(d),
                 "minimap": beacon.minimap(d),
@@ -1329,7 +1332,7 @@ class Companion:
     @staticmethod
     def _strip_target():
         """The target as the add-on's strip gives it right now: (name, level, health 0-1 or None, reaction or
-        None), or four Nones. Health and reaction come with strip version 6."""
+        None), or four Nones. Reaction comes with strip version 6, health with version 7's bars."""
         try:
             import beacon
             d = beacon.latest()
@@ -1338,7 +1341,9 @@ class Companion:
             if not name or not st.get("target"):
                 return None, None, None, None
             lvl = st.get("target_level")
-            hp = st.get("target_hp")
+            hp = st.get("target_hp")                     # the number (secret on WoW Forever: None), else the bar
+            if hp is None and st.get("target_frac") is not None:
+                hp = st["target_frac"] * 100
             return (name, lvl if lvl and lvl > 0 else None, hp / 100 if hp is not None else None,
                     "player" if st.get("target_player") else st.get("target_reaction"))
         except Exception:
@@ -2293,6 +2298,10 @@ class Tailer(threading.Thread):
                             st["rested"] = round((bs["rested"] or 0) / bs["xpmax"], 4)
                         if bs["hpmax"]:
                             st["hp"] = round(bs["hp"] / bs["hpmax"], 4)
+                        elif bs.get("hp_frac") is not None:      # the add-on's bar (strip version 7): any layout
+                            st["hp"] = bs["hp_frac"]
+                        if st.get("mana") is None and bs.get("power_frac") is not None:
+                            st["mana"] = bs["power_frac"]        # (only where the screen's own bar gave nothing)
                         if bs["ptype"] == 0 and bs["powermax"]:
                             st["mana"] = round(bs["power"] / bs["powermax"], 4)
                         with self.comp.lock:

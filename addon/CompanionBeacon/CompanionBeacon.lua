@@ -63,8 +63,17 @@
 --   5-44   20 bytes, two squares each (byte / 64, byte % 64); 0 past the end
 --   45     length, high 6 bits
 --   46-47  checksum of squares 1-45
+--
+-- Above the strip (version 7): BARS bars, each as wide as the strip and one square high, that the GAME fills.
+-- WoW Forever keeps health and power secret from add-ons as numbers, but a bar may be handed a secret value
+-- and draws it; the companion measures how much of each bar is lit (green on black).
+--   bar 1 (the row just above the strip)  your health
+--   bar 2                                 your power (mana, rage, energy)
+--   bar 3 (on top)                        the target's health (row 2 says whether there is a target)
+-- A bar with a blue background = the game refused even that: the companion reads the screen as before.
 
-local CELL, CELLS, ROWS, VERSION = 4, 47, 6, 6
+local CELL, CELLS, ROWS, VERSION = 4, 47, 6, 7
+local BARS = 3
 local PAGE, HOLD, TEXT_MAX, QUEST_MAX = 20, 4, 1200, 40
 local floor = math.floor
 
@@ -80,6 +89,42 @@ for i = 1, CELLS * ROWS do                                  -- square i: row 1 i
     t:SetPoint("TOPLEFT", f, "TOPLEFT", ((i - 1) % CELLS) * CELL, -floor((i - 1) / CELLS) * CELL)
     t:SetColorTexture(0, 0, 0, 1)
     tex[i] = t
+end
+
+local bars = {}
+for i = 1, BARS do
+    local b = CreateFrame("StatusBar", nil, f)
+    b:SetSize(CELL * CELLS, CELL)
+    b:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, (i - 1) * CELL)
+    b:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+    b:SetStatusBarColor(0, 1, 0, 1)
+    b:SetMinMaxValues(0, 1)
+    b:SetValue(0)
+    local bg = b:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(b)
+    bg:SetColorTexture(0, 0, 0, 1)
+    b.bg = bg
+    bars[i] = b
+end
+
+local function fill(i, unit, cur, max)                      -- bar i = cur(unit) of max(unit); either may be secret
+    local b = bars[i]
+    local ok = pcall(function()
+        b:SetMinMaxValues(0, max(unit))
+        b:SetValue(cur(unit))
+    end)
+    if b.ok ~= ok then
+        b.ok = ok
+        if ok then
+            b.bg:SetColorTexture(0, 0, 0, 1)
+        else
+            b.bg:SetColorTexture(0, 0, 1, 1)                -- refused: say so in blue, with nothing lit
+            pcall(function()
+                b:SetMinMaxValues(0, 1)
+                b:SetValue(0)
+            end)
+        end
+    end
 end
 
 local function rescale()                                    -- one unit = one real screen pixel
@@ -596,6 +641,9 @@ local function update()
     end
     put(46, 2, sum)
 
+    pcall(fill, 1, "player", UnitHealth, UnitHealthMax)
+    pcall(fill, 2, "player", UnitPower, UnitPowerMax)
+    pcall(fill, 3, "target", UnitHealth, UnitHealthMax)
     local ok2, err2 = pcall(numbers)                        -- a row that fails part-way is left with a checksum
     local ok3, err3 = pcall(pages)                          -- that no longer fits (it is sealed last): not read
     if not (ok2 and ok3 and slow_ok) then error((not ok2 and err2) or (not ok3 and err3) or slow_err, 0) end
