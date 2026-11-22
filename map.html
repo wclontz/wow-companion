@@ -82,9 +82,9 @@ const nbImgs = {};
 
 // places a quest look-up gave (start / objective / turn-in), drawn on a map: at(fx, fy) -> card pixels
 const SPOT_COL = {start: "#ffd24a", turnin: "#ffd24a", objective: "#5fd6ff", area: "#7dffb0",
-  vendor: "#e8d5a8", repair: "#e8d5a8", trainer: "#c9a7ff", flight: "#9ad0ff", mail: "#ffffff", bank: "#ffd24a", inn: "#ffb38a", gather: "#8fe36b"};
+  vendor: "#e8d5a8", repair: "#e8d5a8", trainer: "#c9a7ff", flight: "#9ad0ff", flight_a: "#4f9dff", flight_h: "#ff5548", flight_n: "#ffd24a", mail: "#ffffff", bank: "#ffd24a", inn: "#ffb38a", gather: "#8fe36b"};
 // the letter in a mark: quests ! and ?, places by what they are (V vendor, R repair, T trainer, F flight, M mail, B bank, I inn)
-const SPOT_CH = {start: "!", turnin: "?", vendor: "V", repair: "R", trainer: "T", flight: "F", mail: "M", bank: "B", inn: "I"};
+const SPOT_CH = {start: "!", turnin: "?", vendor: "V", repair: "R", trainer: "T", flight: "F", flight_a: "F", flight_h: "F", flight_n: "F", mail: "M", bank: "B", inn: "I"};
 function drawQuestSpots(ctx, spots, at, w, h, picked, edge){
   ctx.save(); ctx.font = "600 11px Segoe UI"; ctx.textBaseline = "middle";
   (spots || []).forEach(sp => {
@@ -106,7 +106,7 @@ function drawQuestSpots(ctx, spots, at, w, h, picked, edge){
       return;
     }
     const on = !picked || picked === sp.quest, r = on ? 7 : 5;
-    ctx.globalAlpha = on ? 1 : 0.55;
+    ctx.globalAlpha = on ? (sp.used === false ? 0.75 : 1) : 0.55;   // a flight point not used yet: fainter
     ctx.fillStyle = SPOT_COL[sp.kind] || SPOT_COL.objective; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(a, b - r); ctx.lineTo(a + r, b); ctx.lineTo(a, b + r); ctx.lineTo(a - r, b); ctx.closePath();
     ctx.fill(); ctx.stroke();

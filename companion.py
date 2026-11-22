@@ -2594,7 +2594,19 @@ def places_on(frame):
         return []
     import quadmap
     from worldmap import continent
-    return PLACES.on_map(continent(frame), quadmap.zone_bounds().get(frame))
+    import flights
+    bb = quadmap.zone_bounds()
+    mine = PLACES.on_map(continent(frame), bb.get(frame))
+    # the flight points of both sides (flights.py): a flight master in the table is drawn once, by flights.py
+    # (at the measured spot when it is near the table's: the event can arrive when you are already in the air)
+    seen = {}
+    with PLACES.lock:
+        for r in PLACES.rows:
+            if r["kind"] == "flight":
+                seen.setdefault(r["name"], []).append((r["ns"], r["we"]))
+    known = flights.on_map(frame, bb, continent, seen)
+    drawn = {f["who"] for f in known}
+    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn)] + known
 
 
 def game_quest_spots():
