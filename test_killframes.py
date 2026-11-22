@@ -51,7 +51,8 @@ m._spool_save = lambda fr: None
 m.screen_ok_t = None
 saved = []
 m.archive = lambda place, unit, t, P, png, kind, **extra: saved.append((place, kind, round(t)))
-m._snap_anchor = lambda place, meta, t, P, unit, img=None, checked=False: saved.append((place, "anchor", img.size))
+kpxs = []
+m._snap_anchor = lambda place, meta, t, P, unit, img=None, checked=False, kpx=None: (saved.append((place, "anchor", img.size)), kpxs.append(kpx))
 m.fix_live = lambda *a, **k: None
 
 assert not m._near_dungeon(), "no strip: not near a dungeon"
@@ -78,6 +79,7 @@ m.kill_snap("The Deadmines (open world)", t0 + 44.0, (t0 + 43.6, -11210.0, 1660.
 kinds = [k for _, k, _ in saved]
 assert kinds == ["kill", "anchor", "kill", "anchor"], saved
 assert not m.dbg.get("kill_no_frame"), m.dbg
+assert kpxs and all(k and abs(k - m.k_shot()) < 1e-9 for k in kpxs), ("a kill shot goes to the map with the scale it was taken at", kpxs)
 # a kill from before any frame was kept has no picture, and none is made up
 m.kill_snap("The Deadmines (open world)", t0 - 30.0, (t0 - 30.5, -11200.0, 1650.0))
 assert m.dbg.get("kill_no_frame") == 1 and len(saved) == 4, (m.dbg, saved)
@@ -97,4 +99,42 @@ strip["d"] = {"zoom": 0}
 assert abs(m.k_shot() - m.frame_r() / 150.0) < 1e-9 and 1.05 < m.k_shot() < 1.2, m.k_shot()
 strip["d"] = {"zoom": 1}
 assert abs(m.k_shot() - 1.395) < 1e-9, "one step in: the measured scale"
+# the tracking button's arc on the rim of another layout's shot is cut away; the rest of the picture stays
+pic = Image.new("RGBA", (320, 320), (200, 100, 50, 255))
+cut = np.asarray(MM.cut_rim_button(pic))[..., 3]
+assert cut[20, 245] == 0 and cut[160, 160] == 255 and cut[300, 245] == 255 and cut[20, 75] == 255, "only the top-right rim"
+assert 0.02 < (cut == 0).mean() < 0.1, (cut == 0).mean()
+
+# a kill shot from a character at another scale lands on a map made at the main character's scale: it is brought
+# to the map's scale first, so it matches what is there (same floor) instead of being held back
+import math
+MM.k_indoor = lambda: 1.4
+m2 = MM.MinimapMapper(grab)
+m2.use_beacon = False
+big = (np.kron(np.random.default_rng(8).random((40, 40, 3)), np.ones((30, 30, 1))) * 255).astype(np.uint8)   # 1200 px of "dungeon"
+
+
+def view(u, v, k):
+    """The minimap at map spot (u, v) - the mapper's u = -(log y), v = -(log x) - k px a yard, as a 320 px disc
+    (ground px = 1.4 * yards + 600)."""
+    half = 160 / k * 1.4
+    cx, cy = 1.4 * u + 600, 1.4 * v + 600
+    im = Image.fromarray(big).crop((int(cx - half), int(cy - half), int(cx + half), int(cy + half))).resize((320, 320), Image.BILINEAR)
+    im = im.convert("RGBA")
+    im.putalpha(MM.disc_mask(160))
+    return im
+
+
+meta = m2.meta("Test Mine")
+meta["unit"] = "world"
+meta["align"] = {"k": 1.4, "ky": 1.4, "cx": 0.0, "cy": 0.0, "source": "log"}
+for i in range(8):                                               # the main character's run: 8 shots, 20 yd apart
+    m2._snap_anchor("Test Mine", meta, clock.t, (0.0, -(20.0 * i - 70)), "world", img=view(20.0 * i - 70, 0.0, 1.4), checked=True, kpx=1.4)
+n0 = len(meta["cells"])
+assert n0 == 8, n0
+m2.dbg = {}
+for u in (-55.0, 5.0, 45.0):                                     # the other character, between those spots, at 1.12
+    m2._snap_anchor("Test Mine", meta, clock.t, (-14.0, -u), "world", img=view(u, 14.0, 1.12), checked=True, kpx=1.12)
+assert not m2.dbg.get("floor_pending"), ("held back as another floor", m2.dbg)
+assert len(meta["cells"]) == n0 + 3 and {c.get("layer", 0) for c in meta["cells"].values()} == {0}, m2.dbg
 print("ALL PASS")

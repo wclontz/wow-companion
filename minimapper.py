@@ -166,6 +166,36 @@ def shot_k(cell, width, now_k=None):
     return float((cell or {}).get("kpx") or OLD_SHOT_K.get(width) or now_k or k_indoor())
 
 
+def _rim_wedge(n, r0, a0, a1):
+    ys, xs = np.mgrid[0:n, 0:n]
+    dx, dy = xs - (n - 1) / 2, (n - 1) / 2 - ys
+    ang = np.degrees(np.arctan2(dy, dx))
+    return (np.hypot(dx, dy) > r0 * n / 2) & (np.hypot(dx, dy) <= n / 2) & (ang > a0) & (ang < a1)
+
+
+def has_rim_button(im):
+    """Is something drawn where the default layout's tracking button sits on the minimap's rim (measured on
+    2026-11-21's clips: radius 0.89-0.99 of the disc, 49 to 66 degrees up from east)? Most of that patch lit."""
+    a = np.asarray(im.convert("RGBA"))
+    if a.shape[0] != a.shape[1]:
+        return False
+    w = _rim_wedge(a.shape[0], 0.9, 50, 65)
+    return bool(w.any()) and float(((a[..., :3].max(axis=2) > 40) & (a[..., 3] > 0))[w].mean()) > 0.6
+
+
+def cut_rim_button(im):
+    """A shot from a character with the game's default layout has the tracking button's arc on its top-right
+    rim (the button overlaps the minimap there); it was stamped along the dungeon map like a row of hooks.
+    That bit of the rim is made see-through: radius over 0.72 of the disc, 38 to 82 degrees up from east."""
+    a = np.asarray(im.convert("RGBA")).copy()
+    n = a.shape[0]
+    ys, xs = np.mgrid[0:n, 0:a.shape[1]]
+    dx, dy = xs - (a.shape[1] - 1) / 2, (n - 1) / 2 - ys
+    ang = np.degrees(np.arctan2(dy, dx))
+    a[(np.hypot(dx, dy) > 0.72 * n / 2) & (ang > 38) & (ang < 82), 3] = 0
+    return Image.fromarray(a)
+
+
 def to_scale(im, k_from, k_to):
     """A shot resized from the scale it was taken at to another (old-UI shots onto today's map)."""
     if not k_from or not k_to or abs(k_to / k_from - 1) < 0.01:
@@ -736,7 +766,7 @@ class MinimapMapper(threading.Thread):
         # fresh position (the log just flushed, usually right after a kill): snap the minimap NOW and pin
         # that shot to this exact world spot
         if time.time() - t <= 4 and place == self.place_now and self.seg and self.seg["off"] is not None:
-            self._snap_anchor(place, m, t, P, unit)
+            self._snap_anchor(place, m, t, P, unit, kpx=self.k_shot() if unit == "world" else None)
         if MODE == "shots":
             return
         recs = [r for r in list(self.track) if r[4] == place]
@@ -1240,7 +1270,10 @@ class MinimapMapper(threading.Thread):
         if fr and abs(fr["t"] - tp) < 1.5:
             self.archive(place, "world", tp, (x, y), fr["png"], kind="kill", t_kill=t_kill)
             img = Image.open(io.BytesIO(fr["png"]))
-            self._snap_anchor(place, self.meta(place), tp, (x, y), "world", img=img, checked=True)
+            # (the scale it was taken at: a character with its own layout is not at the map's scale. Without it
+            #  the shot was compared with the map as if it were - nothing matched, and 54 of a run's kill shots
+            #  were held back as "another floor?" on 2026-11-21)
+            self._snap_anchor(place, self.meta(place), tp, (x, y), "world", img=img, checked=True, kpx=self.k_shot())
         else:                                       # no minimap kept from that moment (e.g. just restarted):
             dbg["kill_no_frame"] = dbg.get("kill_no_frame", 0) + 1     # never guess with a newer picture
 
@@ -1371,6 +1404,8 @@ class MinimapMapper(threading.Thread):
         if img is None:
             return
         k_now = k_indoor() if unit == "world" else None
+        if unit == "world" and img.mode == "RGBA" and has_rim_button(img):
+            img = cut_rim_button(img)                # (the default layout's tracking button, on the disc's rim)
         if kpx and k_now and abs(kpx / k_now - 1) >= 0.01:
             # a clip from another minimap size/zoom (rebuilding from the archive): bring it to today's scale,
             # keeping its own round edge
