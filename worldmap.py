@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 import quadmap
+import mapmarks
 from quadmap import QuadMap, G, zone_bounds
 from minimapper import HERE, safe
 
@@ -134,7 +135,18 @@ class WorldMap(QuadMap):
             for rid, R in list(m["runs"].items()):
                 if R.get("n", 0) >= 2 and (not R.get("k") or R.get("layer") is None):
                     self._resolve_run(place, m, rid)
-            items = [(c, R) for c, R in self.drawable(m) if self.img(place, c) is not None]
+            # each shot's width and its coarse picture of where the game's own marks are (mapmarks): from
+            # marks.bin, so a redraw no longer opens every clip just to know its size
+            mk, items, wid, grid = self.marks(place), [], {}, {}
+            for c, R in self.drawable(m):
+                if not c.get("file") or not os.path.exists(os.path.join(self._dir(place), "clips", c["file"])):
+                    continue
+                r = mk.get(c, load=lambda c=c: self.img(place, c))
+                if r is not None:
+                    wid[c["id"]], grid[c["id"]] = r
+                    items.append((c, R))
+            mk.flush()
+            pick = self.__dict__.setdefault("_pick", {})      # (place, layer, square) -> (its shots, their order)
             # drawn at the sharpest zoom present (the indoor view's), so city detail is never shrunk away
             ref = max([R["k"] for c, R in items if R.get("k")] or [m.get("ref_k") or 0]) or None
             if not ref or not items:
@@ -158,7 +170,7 @@ class WorldMap(QuadMap):
                 radius, near = {}, {}                 # each shot's drawn radius; shots by 250 px cell (hole filling)
                 for i, (px, py, c, R) in enumerate(shots):
                     f = ref / R["k"]
-                    rr = (self.img(place, c).width / 2 - 6) * f
+                    rr = (wid[c["id"]] / 2 - 6) * f
                     radius[i] = rr
                     near.setdefault((int(px // 250), int(py // 250)), []).append(i)
                     reach = rr - G * 0.72
@@ -175,14 +187,29 @@ class WorldMap(QuadMap):
                     if any(shots[i][2].get("mapping") for dd, i in cand):
                         cand = [(dd, i) for dd, i in cand if shots[i][2].get("mapping")]
                     cand.sort()
-                    tiles.setdefault((qx * G // T, qy * G // T), []).append(((qx, qy), [i for dd, i in cand[:8]]))
+                    # A shot with a quest icon or a quest-area ring on this square goes under the ones without:
+                    # the nearest LOOK shots are compared, the plain ones drawn first (mapmarks.order).
+                    ids = [i for dd, i in cand[:mapmarks.LOOK]]
+                    tid = hash(tuple(shots[i][2]["id"] for i in ids))
+                    memo = pick.get((place, L, qx, qy))
+                    if memo is None or memo[0] != tid:
+                        scores = []
+                        for i in ids:
+                            px, py, c, R = shots[i]
+                            w, f = wid[c["id"]], ref / R["k"]
+                            ws = max(8, int(round(w * f))) if abs(f - 1) > 0.01 else w
+                            s = w / ws                # the square's corner in the shot's own px
+                            scores.append(mapmarks.square(grid[c["id"]], round(qx * G - (px - ws / 2)) * s,
+                                                          round(qy * G - (py - ws / 2)) * s, G * s))
+                        memo = pick[(place, L, qx, qy)] = (tid, tuple(mapmarks.order(scores)[:8]))
+                    tiles.setdefault((qx * G // T, qy * G // T), []).append(((qx, qy), [ids[k] for k in memo[1]]))
                 lt = {}
                 for (tx, ty), squares in tiles.items():
                     key = f"{tx},{ty}"
                     sig = hashlib.md5(repr(sorted(
                         (s, [(shots[i][2]["id"], round(shots[i][3]["k"], 3), bool(shots[i][2].get("mapping"))) for i in ids])
                         for s, ids in squares)
-                    ).encode() + repr(round(ref, 3)).encode() + b"v2").hexdigest()
+                    ).encode() + repr(round(ref, 3)).encode() + b"v3").hexdigest()
                     lt[key] = sig
                     name = f"L{L}_{tx}_{ty}.png"
                     if (old.get(str(L)) or {}).get(key) == sig and os.path.exists(os.path.join(d, name)):
@@ -199,6 +226,13 @@ class WorldMap(QuadMap):
                                 a = np.asarray(im).copy()       # is not ground - see-through
                                 a[..., 3] = np.where(a[..., :3].max(axis=2) < 12, 0, a[..., 3])
                                 im = Image.fromarray(a)
+                            if grid[c["id"]][1].any():          # a quest ! or ? that every shot of the spot has:
+                                a = np.asarray(im).copy()       # painted over from the ground round it
+                                ym = mapmarks.icon_mask(a)
+                                if ym is not None:
+                                    ym &= a[..., 3] > 0
+                                    a[ym, 3] = 0
+                                    im = Image.fromarray(_grow_in(a, ym, rounds=8))
                             f = ref / R["k"]
                             if abs(f - 1) > 0.01:
                                 w = max(8, int(round(im.width * f)))

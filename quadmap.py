@@ -26,6 +26,7 @@ import time
 import numpy as np
 from PIL import Image, ImageFilter
 
+import mapmarks
 from minimapper import HERE, safe, phase_shift, overlap_similarity, is_blank, disc_mask
 
 QROOT = os.path.join(HERE, "maps", "quad")
@@ -206,6 +207,7 @@ class QuadMap:
         self.lock = threading.RLock()
         self.dbg = {}
         self._img = {}               # (place, file) -> image cache
+        self._marks = {}             # place -> mapmarks.Marks (quest icons / rings on its shots)
         self.status = ""
 
     # ------------------------------------------------------------------ storage
@@ -249,6 +251,12 @@ class QuadMap:
                 self._img.clear()
             self._img[key] = im
         return im
+
+    def marks(self, place):
+        k = self._marks.get(place)
+        if k is None:
+            k = self._marks[place] = mapmarks.Marks(self._dir(place))
+        return k
 
     # ------------------------------------------------------------------ adding a shot
     def add(self, place, img, x, y, t=None, label=None, keep=True, mapping=False, k_hint=None, frame=None):
@@ -316,7 +324,7 @@ class QuadMap:
                 c["frame"] = frame                    # the zone (coords map) it was taken in
             if mapping:
                 c["mapping"] = True           # taken in Mapping mode: wins over every other shot of the same spot
-            stored = keep and self._worth_keeping(m, c, R)
+            stored = keep and self._worth_keeping(m, c, R, img, place)
             if stored:
                 c["file"] = f"c{c['id']:05d}.png"
                 d = os.path.join(self._dir(place), "clips")
@@ -324,6 +332,11 @@ class QuadMap:
                 img.save(os.path.join(d, c["file"]))
                 self._img[(place, c["file"])] = img
                 m["clips"].append(c)
+                try:
+                    self.marks(place).get(c, img)
+                    self.marks(place).flush()
+                except Exception as e:
+                    dbg["marks_error"] = repr(e)
             self._resolve_run(place, m, run)
             self.dirty[place] = self.dirty.get(place) or time.time()
             if stored:
@@ -331,8 +344,10 @@ class QuadMap:
             dbg["stored"] = dbg.get("stored", 0) + int(bool(stored))
             return "stored" if stored else "skipped"
 
-    def _worth_keeping(self, m, c, R):
-        """Keep it if its square has room, or it's better centred than the worst kept there."""
+    def _worth_keeping(self, m, c, R, img=None, place=None):
+        """Keep it if its square has room, or it's better centred than the worst kept there - or it is plainer
+        than every shot kept there: it has no quest icon / quest-area ring where they all have one (mapmarks),
+        so the map can at last be drawn without it."""
         k = m.get("ref_k") or R.get("k") or self.K_DEFAULT
         sq = (int(k * c["x"] // G), int(k / self.ASPECT * c["y"] // G))
         # (Mapping shots get their own room, and so does every layer: a square that was full of outdoor shots
@@ -344,7 +359,23 @@ class QuadMap:
             return True
         cxy = ((sq[0] + 0.5) * G, (sq[1] + 0.5) * G)
         dist = lambda o: math.hypot(k * o["x"] - cxy[0], k / self.ASPECT * o["y"] - cxy[1])
-        return dist(c) < max(dist(o) for o in same) - 3
+        if dist(c) < max(dist(o) for o in same) - 3:
+            return True
+        if img is None or place is None:
+            return False
+        try:
+            mk, kept = self.marks(place), []
+            for o in same:
+                r = mk.get(o, load=lambda o=o: self.img(place, o) if o.get("file") else None)
+                if r is None:
+                    return False
+                kept.append(mapmarks.middle(r[1]))
+            if mapmarks.plainer(mapmarks.middle(mapmarks.coarse(img)), kept):
+                self.dbg.setdefault(place, {})["plainer"] = self.dbg.get(place, {}).get("plainer", 0) + 1
+                return True
+        except Exception as e:
+            self.dbg.setdefault(place, {})["marks_error"] = repr(e)
+        return False
 
     @staticmethod
     def _same_room(R, Ro):
