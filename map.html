@@ -41,9 +41,12 @@ button.on{border-color:var(--gold);color:var(--gold)}
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button id="bk_close" title="Close" style="margin-left:auto;order:9">✕</button>
     <button id="bk_now">Back up now</button>
-    <select id="exp_map"></select><button id="exp_go" title="Download a map package to share">⬇ Export</button>
-    <label style="cursor:pointer"><input type="file" id="imp_file" accept=".zip" hidden><span class="dim" style="border:1px solid var(--line);border-radius:6px;padding:5px 9px">⬆ Import map…</span></label>
+    <select id="exp_map"></select><select id="exp_zone" title="Send the whole map, or one zone of it"></select>
+    <button id="send_go" title="A small file (a few MB) with your drawn map: give it to a friend, who adds it with the button beside this one">📤 Send my map</button>
+    <label style="cursor:pointer" title="A file a friend made with Send my map (or a full export)"><input type="file" id="imp_file" accept=".zip" hidden><span class="dim" style="border:1px solid var(--line);border-radius:6px;padding:5px 9px">📥 Add a friend's map…</span></label>
+    <button id="exp_go" class="dim" title="Everything: every shot the map is made of. Hundreds of MB on a well-explored map; only needed to move your own map to another PC">Full export</button>
   </div>
+  <div id="friends_box" class="dim" style="margin:6px 0"></div>
   <div id="share_msg" class="dim" style="margin:8px 0"></div>
   <div style="font-weight:600;color:var(--gold);margin:6px 0">Backups</div>
   <div id="bk_list" class="dim">…</div>
@@ -78,7 +81,10 @@ function toImg(d, p){ const [u, v] = uv(d, p); return [(d.info.kx || d.info.k) *
 const nbImgs = {};
 
 // places a quest look-up gave (start / objective / turn-in), drawn on a map: at(fx, fy) -> card pixels
-const SPOT_COL = {start: "#ffd24a", turnin: "#ffd24a", objective: "#5fd6ff"};
+const SPOT_COL = {start: "#ffd24a", turnin: "#ffd24a", objective: "#5fd6ff", area: "#7dffb0",
+  vendor: "#e8d5a8", repair: "#e8d5a8", trainer: "#c9a7ff", flight: "#9ad0ff", mail: "#ffffff", bank: "#ffd24a", inn: "#ffb38a", gather: "#8fe36b"};
+// the letter in a mark: quests ! and ?, places by what they are (V vendor, R repair, T trainer, F flight, M mail, B bank, I inn)
+const SPOT_CH = {start: "!", turnin: "?", vendor: "V", repair: "R", trainer: "T", flight: "F", mail: "M", bank: "B", inn: "I"};
 function drawQuestSpots(ctx, spots, at, w, h, picked, edge){
   ctx.save(); ctx.font = "600 11px Segoe UI"; ctx.textBaseline = "middle";
   (spots || []).forEach(sp => {
@@ -105,7 +111,7 @@ function drawQuestSpots(ctx, spots, at, w, h, picked, edge){
     ctx.beginPath(); ctx.moveTo(a, b - r); ctx.lineTo(a + r, b); ctx.lineTo(a, b + r); ctx.lineTo(a - r, b); ctx.closePath();
     ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#000"; ctx.textAlign = "center";
-    ctx.fillText(sp.kind === "start" ? "!" : sp.kind === "turnin" ? "?" : "", a, b + .5);
+    ctx.fillText(SPOT_CH[sp.kind] || "", a, b + .5);
     const text = sp.label || sp.quest;
     if (on && text) { ctx.textAlign = "left"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.85)";
       ctx.strokeText(text, a + r + 4, b); ctx.fillStyle = "#fff3cf"; ctx.fillText(text, a + r + 4, b); }
@@ -223,6 +229,9 @@ function draw(){
     ctx.fillStyle = "#c77dff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(a, c - 10); ctx.lineTo(a + 10, c); ctx.lineTo(a, c + 10); ctx.lineTo(a - 10, c); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#e2c6ff"; ctx.fillText(b[2], a + 13, c + 4); });
+  // places you have used (vendors, trainers, flight masters...) with their names; gathering spots as dots, no names
+  drawQuestSpots(ctx, (d.places || []).map(p => p.kind === "gather" ? {...p, quest: "\u0000", label: ""} : {...p, quest: p.label}),
+                 (fx, fy) => S(...toImg(d, [fx, fy])), w, h, view && view.z >= 0.8 ? null : "\u0001");
   drawQuestSpots(ctx, d.quest_spots, (fx, fy) => S(...toImg(d, [fx, fy])), w, h, null);
   if (d.me) {
     const [a, b] = S(...mePx(d));
@@ -341,6 +350,18 @@ addEventListener("resize", () => { dirty = true; draw(); });
 async function loadShare(){
   const r = await (await fetch("/api/backups", {cache: "no-store"})).json();
   $("exp_map").innerHTML = (r.maps || []).map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("");
+  window._maps = r.maps || [];
+  const zs = () => { const m = window._maps.find(m => m.id === $("exp_map").value);
+    $("exp_zone").innerHTML = `<option value="">all of it</option>` + ((m && m.zones) || []).map(z => `<option>${esc(z)}</option>`).join(""); };
+  $("exp_map").onchange = zs; zs();
+  $("friends_box").innerHTML = (r.friends || []).length
+    ? "Friends' maps shown under yours: " + r.friends.map(f => `${esc(f.continent)} (${new Date(f.got * 1000).toLocaleDateString()})`).join(", ")
+      + (r.backups ? ` <button id="fr_forget">Remove</button>` : "") : "";
+  if ($("fr_forget")) $("fr_forget").onclick = async () => {
+    if (!confirm("Remove the friends' maps? Your own map is not touched.")) return;
+    await fetch("/api/friends/forget", {method: "POST"});
+    $("share_msg").textContent = "Removed. The map is being drawn again."; loadShare();
+  };
   $("bk_list").innerHTML = (r.backups || []).length ? r.backups.map(b =>
     `<div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="flex:1">${new Date(b.made * 1000).toLocaleString()} · ${esc(b.reason || "")} · ${b.mb} MB</span>`
     + `<button data-restore="${esc(b.name)}">Restore</button></div>`).join("") : "No backups yet.";
@@ -360,12 +381,19 @@ $("bk_now").onclick = async () => {
   $("share_msg").textContent = x.ok && x.name ? "Backed up: " + x.name : "Nothing to back up yet.";
   loadShare();
 };
+$("send_go").onclick = () => {
+  const m = $("exp_map").value; if (!m) return;
+  $("share_msg").textContent = "Making the file… it lands in your Downloads folder. Give it to a friend (it is small enough for Discord); they open their Map page and click “Add a friend's map”.";
+  location.href = "/api/sendmap?map=" + encodeURIComponent(m) + ($("exp_zone").value ? "&zone=" + encodeURIComponent($("exp_zone").value) : "");
+};
 $("exp_go").onclick = () => { const m = $("exp_map").value; if (m) location.href = "/api/export?map=" + encodeURIComponent(m); };
 $("imp_file").onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   $("share_msg").textContent = "Importing " + f.name + "…";
   const x = await (await fetch("/api/import", {method: "POST", headers: {"Content-Type": "application/zip"}, body: f})).json();
-  $("share_msg").textContent = x.ok ? `Imported ${x.added} shots - ${x.how}. (Mapping is off - switch it on in the HUD.)` : "Import failed: " + x.error;
+  $("share_msg").textContent = !x.ok ? "Import failed: " + x.error
+    : x.friend ? `Added a friend's map of ${x.map} (${x.added} tiles). It shows wherever you have not been yet; the map is being drawn again (a few minutes).`
+    : `Imported ${x.added} shots - ${x.how}. (Mapping is off - switch it on in the HUD.)`;
   e.target.value = ""; loadShare(); tick();
 };
 

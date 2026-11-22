@@ -2,6 +2,7 @@
 -- screen, read by the WoW Companion (beacon.py). It reads the game's own position functions and draws;
 -- the other things it does: switch the combat and chat logs on at login (owner's choice, 2026-11-18), and
 -- inspect your party members one at a time, out of combat and in range, for their gear (2026-11-19).
+-- And only if you type /cbeacon rings: hide the quest-area rings on the minimap (owner's choice, 2026-11-21).
 --
 -- The strip is ROWS rows of CELLS squares of CELL x CELL real screen pixels. Each square carries 6 bits:
 -- red, green and blue each at one of 4 levels (0, 1/3, 2/3, 1). Keep this layout in step with beacon.py.
@@ -57,6 +58,18 @@
 --            rows 5-6: 10 + n = quest n of the log (odd n on row 5, even on row 6):
 --                      level <tab> flags (1 complete, 2 failed) <tab> title <tab> objective <tab> objective ...
 --                      (an objective starts with + when it is finished, - when not)
+--            row 7 (version 8):  55 your buffs, 56 your debuffs: a line each, name <tab> when it ends (the PC
+--                      clock's seconds, 0 = it does not run out) <tab> stacks
+--                      57 spells on your bars that are cooling down: name <tab> when ready (PC clock's seconds)
+--                      58 what you carry of food, drink, potions, reagents, ammunition and soul shards:
+--                      name <tab> how many <tab> item class.subclass
+--            row 8 (version 8):  59 the last 6 things that happened: number <tab> kind <tab> who / what
+--                      (vendor, repair, trainer, flight, mail, bank, inn, whisper, ready, level, dead, gather)
+--                      60 the quests the game marks on this zone's map: the map id on the first line, then
+--                      title <tab> across <tab> down (thousandths of the zone map)
+--                      61 s <tab> skill <tab> rank <tab> most, and t <tab> talent tree <tab> points
+--                      62 reputations: name <tab> standing (1-8) <tab> points into it <tab> points it takes
+--                      63 rings <tab> 1 shown / 0 hidden by /cbeacon rings / x the game has no such switch
 --   2      counter, changes when that text changes
 --   3      the text's length in bytes, low 6 bits (square 45 has the rest; cut at 1200)
 --   4      page number (the page starts at 20 x this)
@@ -69,11 +82,12 @@
 -- and draws it; the companion measures how much of each bar is lit (green on black).
 --   bar 1 (the row just above the strip)  your health
 --   bar 2                                 your power (mana, rage, energy)
---   bar 3 (on top)                        the target's health (row 2 says whether there is a target)
+--   bar 3                                 the target's health (row 2 says whether there is a target)
+--   bars 4-7 (version 8)                  party member 1-4's health (texts 4-7 say whether there is one)
 -- A bar with a blue background = the game refused even that: the companion reads the screen as before.
 
-local CELL, CELLS, ROWS, VERSION = 4, 47, 6, 7
-local BARS = 3
+local CELL, CELLS, ROWS, VERSION = 4, 47, 8, 8
+local BARS = 7
 local PAGE, HOLD, TEXT_MAX, QUEST_MAX = 20, 4, 1200, 40
 local floor = math.floor
 
@@ -294,8 +308,11 @@ local trows = {                                             -- one per text row:
     { row = 4, chans = { 4, 5, 6, 7, 8, 51, 52, 53, 54 }, at = 0, page = 0, held = 0 },
     { row = 5, chans = {}, at = 0, page = 0, held = 0 },
     { row = 6, chans = {}, at = 0, page = 0, held = 0 },
+    { row = 7, chans = { 55, 56, 57, 58 }, at = 0, page = 0, held = 0 },
+    { row = 8, chans = { 59, 60, 61, 62, 63 }, at = 0, page = 0, held = 0 },
 }
 for c = 1, 10 do say(c, "") end
+for c = 55, 63 do say(c, "") end
 for c = 51, 54 do say(c, "") end
 
 local function turn(tr)                                     -- which text and page this row shows now
@@ -559,9 +576,272 @@ local function minimap_spot()
     say(9, s)
 end
 
+-- ---- version 8: buffs, cooldowns, what you carry, what happened, quest places, skills, reputation
+local function secret(v) return issecretvalue and issecretvalue(v) and true or false end
+local function plain(v)                                     -- v, or nil when the game keeps it secret
+    if secret(v) then return nil end
+    return v
+end
+
+-- A time that runs out is sent as the PC clock's second it ends at, and kept while it stays within 3 s:
+-- a text that changed every second would be sent over and over and hold the others up.
+local held = {}
+local function ends_at(key, left)
+    if type(left) ~= "number" or left <= 0 then return 0 end
+    local e = floor(time() + left + 0.5)
+    local h = held[key]
+    if h and math.abs(h - e) <= 3 then return h end
+    held[key] = e
+    return e
+end
+
+local function auras_of(filter)                             -- the list as text, or nil when the game hid part of it
+    local out, now, hidden = {}, GetTime(), false
+    for i = 1, 40 do
+        local name, exp, stacks
+        if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+            local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, filter)
+            if not ok then break end
+            if not secret(a) then
+                if a == nil then break end
+                pcall(function() name, exp, stacks = plain(a.name), plain(a.expirationTime), plain(a.applications) end)
+                if type(name) ~= "string" then hidden = true end
+            else
+                hidden = true
+            end
+        elseif UnitAura then
+            local ok, n, _, c, _, _, e = pcall(UnitAura, "player", i, filter)
+            if not ok then break end
+            if not secret(n) then
+                if n == nil then break end
+                name, exp, stacks = n, plain(e), plain(c)
+            else
+                hidden = true
+            end
+        else
+            break
+        end
+        if type(name) == "string" and name ~= "" then
+            local left = type(exp) == "number" and exp > 0 and (exp - now) or nil
+            out[#out + 1] = clean(name) .. "\t" .. ends_at(filter .. name, left) .. "\t" .. (type(stacks) == "number" and stacks or 0)
+        end
+    end
+    if hidden then return nil end
+    return table.concat(out, "\n")
+end
+
+local function auras()                                      -- (a list the game hid part of - in a fight, maybe -
+    local b, d = auras_of("HELPFUL"), auras_of("HARMFUL")   --  is not sent: the last whole one stays)
+    if b then say(55, b) end
+    if d then say(56, d) end
+end
+
+local function spell_name(id)
+    local s = text(C_Spell and C_Spell.GetSpellName, id)
+    if s == "" then s = text(GetSpellInfo, id) end
+    return s
+end
+
+local function cooldowns()
+    local out, had, now = {}, {}, GetTime()
+    if not GetActionInfo then return end
+    for slot = 1, 120 do
+        local ok, kind, id = pcall(GetActionInfo, slot)
+        if ok and plain(kind) == "spell" and type(plain(id)) == "number" then
+            local start, dur
+            if C_Spell and C_Spell.GetSpellCooldown then
+                local ok2, cd = pcall(C_Spell.GetSpellCooldown, id)
+                if ok2 and cd and not secret(cd) then
+                    pcall(function() start, dur = plain(cd.startTime), plain(cd.duration) end)
+                end
+            elseif GetSpellCooldown then
+                local ok2, s, d = pcall(GetSpellCooldown, id)
+                if ok2 then start, dur = plain(s), plain(d) end
+            end
+            if type(start) == "number" and type(dur) == "number" and dur > 2 then     -- (2 s: not the global one)
+                local name = spell_name(id)
+                if name ~= "" and not had[name] and #out < 30 then
+                    had[name] = true
+                    out[#out + 1] = clean(name) .. "\t" .. ends_at("cd" .. name, start + dur - now)
+                end
+            end
+        end
+    end
+    say(57, table.concat(out, "\n"))
+end
+
+local function supplies()
+    local slots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+    local info = C_Container and C_Container.GetContainerItemInfo
+    if not slots then return end
+    local count, order = {}, {}
+    for bag = 0, 4 do
+        for slot = 1, (num(slots, bag) or 0) do
+            local id, n
+            if info then
+                local ok, it = pcall(info, bag, slot)
+                if ok and it and not secret(it) then
+                    pcall(function() id, n = plain(it.itemID), plain(it.stackCount) end)
+                end
+            elseif GetContainerItemInfo then
+                local ok, _, c, _, _, _, _, _, _, _, iid = pcall(GetContainerItemInfo, bag, slot)
+                if ok then id, n = plain(iid), plain(c) end
+            end
+            if type(id) == "number" then
+                if not count[id] then order[#order + 1] = id end
+                count[id] = count[id] or 0
+                count[id] = count[id] + (type(n) == "number" and n or 1)
+            end
+        end
+    end
+    table.sort(order)
+    local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    local nameof = (C_Item and C_Item.GetItemNameByID) or GetItemInfo
+    local out = {}
+    for _, id in ipairs(order) do
+        local class, sub
+        if instant then
+            local ok, _, _, _, _, _, c, s = pcall(instant, id)
+            if ok then class, sub = plain(c), plain(s) end
+        end
+        -- consumables (0), reagents (5), ammunition (6), and the warlock's soul shards
+        if id == 6265 or class == 0 or class == 5 or class == 6 then
+            local name = text(nameof, id)
+            if name ~= "" and #out < 30 then
+                out[#out + 1] = clean(name) .. "\t" .. count[id] .. "\t" .. (type(class) == "number" and class or 0)
+                    .. "." .. (type(sub) == "number" and sub or 0)
+            end
+        end
+    end
+    say(58, table.concat(out, "\n"))
+end
+
+local events, evn = {}, (time and time() or 0) % 1000
+local function note(kind, who)                              -- something happened: the last 6 are text 59
+    evn = (evn + 1) % 1000
+    events[#events + 1] = evn .. "\t" .. kind .. "\t" .. clean(who)
+    while #events > 6 do table.remove(events, 1) end
+    say(59, table.concat(events, "\n"))
+end
+
+local function quest_spots()
+    if not (C_Map and C_Map.GetBestMapForUnit) then return end
+    local okm, map = pcall(C_Map.GetBestMapForUnit, "player")
+    if not okm or type(plain(map)) ~= "number" then
+        say(60, "")
+        return
+    end
+    local out = {}
+    if C_QuestLog and C_QuestLog.GetQuestsOnMap then
+        local ok, list = pcall(C_QuestLog.GetQuestsOnMap, map)
+        if ok and not secret(list) and type(list) == "table" then
+            for _, q in ipairs(list) do
+                pcall(function()
+                    local id, x, y = plain(q.questID), plain(q.x), plain(q.y)
+                    local title = type(id) == "number" and text(C_QuestLog.GetTitleForQuestID, id) or ""
+                    if title ~= "" and type(x) == "number" and type(y) == "number" and #out < 30 then
+                        out[#out + 1] = clean(title) .. "\t" .. floor(x * 1000 + 0.5) .. "\t" .. floor(y * 1000 + 0.5)
+                    end
+                end)
+            end
+        end
+    end
+    say(60, map .. "\n" .. table.concat(out, "\n"))
+end
+
+local function skills()
+    local out = {}
+    if GetProfessions and GetProfessionInfo then
+        local list = { pcall(GetProfessions) }
+        for i = 2, 6 do
+            local idx = plain(list[i])
+            if list[1] and idx then
+                local ok, name, _, rank, top = pcall(GetProfessionInfo, idx)
+                if ok and type(plain(name)) == "string" then
+                    out[#out + 1] = "s\t" .. clean(name) .. "\t" .. (tonumber(plain(rank)) or 0) .. "\t" .. (tonumber(plain(top)) or 0)
+                end
+            end
+        end
+    elseif GetNumSkillLines and GetSkillLineInfo then
+        for i = 1, (num(GetNumSkillLines) or 0) do
+            local ok, name, header, _, rank, _, _, top = pcall(GetSkillLineInfo, i)
+            if ok and type(plain(name)) == "string" and not plain(header) and #out < 40 then
+                out[#out + 1] = "s\t" .. clean(name) .. "\t" .. (tonumber(plain(rank)) or 0) .. "\t" .. (tonumber(plain(top)) or 0)
+            end
+        end
+    end
+    if GetNumTalentTabs and GetTalentTabInfo then
+        for i = 1, (num(GetNumTalentTabs) or 0) do
+            local r = { pcall(GetTalentTabInfo, i) }        -- name, picture, points - or id, name, text, picture, points
+            if r[1] then
+                local name, pts = plain(r[2]), plain(r[4])
+                if type(name) ~= "string" then name, pts = plain(r[3]), plain(r[6]) end
+                if type(name) == "string" then
+                    out[#out + 1] = "t\t" .. clean(name) .. "\t" .. (tonumber(pts) or 0)
+                end
+            end
+        end
+    end
+    say(61, table.concat(out, "\n"))
+end
+
+local function reputation()
+    local out = {}
+    if C_Reputation and C_Reputation.GetNumFactions and C_Reputation.GetFactionDataByIndex then
+        for i = 1, (num(C_Reputation.GetNumFactions) or 0) do
+            local ok, d = pcall(C_Reputation.GetFactionDataByIndex, i)
+            if ok and d and not secret(d) then
+                pcall(function()
+                    local name, st, cur, lo, hi = plain(d.name), plain(d.reaction), plain(d.currentStanding),
+                        plain(d.currentReactionThreshold), plain(d.nextReactionThreshold)
+                    if type(name) == "string" and type(st) == "number" and not (d.isHeader and not d.isHeaderWithRep) and #out < 40 then
+                        out[#out + 1] = clean(name) .. "\t" .. st .. "\t" .. ((cur or 0) - (lo or 0)) .. "\t" .. ((hi or 0) - (lo or 0))
+                    end
+                end)
+            end
+        end
+    elseif GetNumFactions and GetFactionInfo then
+        for i = 1, (num(GetNumFactions) or 0) do
+            local ok, name, _, st, lo, hi, cur, _, _, header, _, hasrep = pcall(GetFactionInfo, i)
+            if ok and type(plain(name)) == "string" and type(plain(st)) == "number" and (not plain(header) or plain(hasrep)) and #out < 40 then
+                lo, hi, cur = tonumber(plain(lo)) or 0, tonumber(plain(hi)) or 0, tonumber(plain(cur)) or 0
+                out[#out + 1] = clean(name) .. "\t" .. st .. "\t" .. (cur - lo) .. "\t" .. (hi - lo)
+            end
+        end
+    end
+    say(62, table.concat(out, "\n"))
+end
+
+-- The quest-area rings on the minimap get into the companion's map pictures. /cbeacon rings hides them (and
+-- shows them again after a /reload): the one thing here that changes how your game looks, so it is off
+-- until you ask.
+local RING_FNS = { "SetQuestBlobRingAlpha", "SetQuestBlobInsideAlpha", "SetQuestBlobOutsideAlpha",
+                   "SetTaskBlobRingAlpha", "SetTaskBlobInsideAlpha", "SetTaskBlobOutsideAlpha" }
+local function rings()
+    local hide = type(CompanionBeaconDB) == "table" and CompanionBeaconDB.hide_rings
+    local can = false
+    for _, fn in ipairs(RING_FNS) do
+        if Minimap and Minimap[fn] then
+            can = true
+            if hide then pcall(Minimap[fn], Minimap, 0) end
+        end
+    end
+    say(63, "rings\t" .. ((not can and "x") or (hide and "0") or "1"))
+    return can
+end
+
+local surveys = 0
 local function survey()
     local e
-    for _, fn in ipairs({ party, quests, purse, gear, minimap_spot }) do
+    surveys = surveys + 1
+    local todo = { party, quests, purse, gear, minimap_spot, auras, cooldowns, quest_spots }
+    if surveys % 5 == 1 then todo[#todo + 1] = supplies end
+    if surveys % 10 == 2 then
+        todo[#todo + 1] = skills
+        todo[#todo + 1] = reputation
+        todo[#todo + 1] = rings
+    end
+    for _, fn in ipairs(todo) do
         local ok, err = pcall(fn)
         if not ok then e = e or err end
     end
@@ -644,6 +924,9 @@ local function update()
     pcall(fill, 1, "player", UnitHealth, UnitHealthMax)
     pcall(fill, 2, "player", UnitPower, UnitPowerMax)
     pcall(fill, 3, "target", UnitHealth, UnitHealthMax)
+    for i = 1, 4 do
+        pcall(fill, 3 + i, "party" .. i, UnitHealth, UnitHealthMax)
+    end
     local ok2, err2 = pcall(numbers)                        -- a row that fails part-way is left with a checksum
     local ok3, err3 = pcall(pages)                          -- that no longer fits (it is sealed last): not read
     if not (ok2 and ok3 and slow_ok) then error((not ok2 and err2) or (not ok3 and err3) or slow_err, 0) end
@@ -684,24 +967,85 @@ local function logs_on()
     end
 end
 
+-- what happened (text 59): who you spoke to, what you gathered, who whispered. Each is only noted - the
+-- companion knows where you stood.
+local PLACES = { MERCHANT_SHOW = "vendor", TRAINER_SHOW = "trainer", TAXIMAP_OPENED = "flight", MAIL_SHOW = "mail",
+                 BANKFRAME_OPENED = "bank", CONFIRM_BINDER = "inn" }
+local GATHER = { ["Herb Gathering"] = true, ["Mining"] = true, ["Skinning"] = true, ["Fishing"] = true }
+local casting = {}                                          -- cast id -> what it was cast at (a herb, a vein)
+local function happened(event, a1, a2, a3, a4)
+    if PLACES[event] then
+        local kind = PLACES[event]
+        if kind == "vendor" and yes(CanMerchantRepair) then kind = "repair" end
+        local who = text(UnitName, "npc")
+        if who == "" and kind ~= "mail" then who = text(UnitName, "target") end
+        note(kind, who)
+    elseif event == "CHAT_MSG_WHISPER" then
+        note("whisper", plain(a2))
+    elseif event == "READY_CHECK" then
+        note("ready", plain(a1))
+    elseif event == "PLAYER_LEVEL_UP" then
+        note("level", tostring(plain(a1) or ""))
+    elseif event == "PLAYER_DEAD" then
+        note("dead", "")
+    elseif event == "UNIT_SPELLCAST_SENT" then
+        if plain(a1) == "player" and type(plain(a3)) == "string" then
+            casting = {}
+            casting[a3] = plain(a2)
+        end
+    elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+        if plain(a1) == "player" and type(plain(a3)) == "number" then
+            local name = spell_name(a3)
+            if GATHER[name] then
+                local what = type(plain(a2)) == "string" and casting[a2] or ""
+                note("gather", name .. ": " .. (type(what) == "string" and what or ""))
+            end
+        end
+    end
+end
+
 f:RegisterEvent("PLAYER_ENTERING_WORLD")
 f:RegisterEvent("INSPECT_READY")
 f:RegisterEvent("DISPLAY_SIZE_CHANGED")
 f:RegisterEvent("UI_SCALE_CHANGED")
-f:SetScript("OnEvent", function(_, event, arg1)
+for _, ev in ipairs({ "MERCHANT_SHOW", "TRAINER_SHOW", "TAXIMAP_OPENED", "MAIL_SHOW", "BANKFRAME_OPENED", "CONFIRM_BINDER",
+                      "CHAT_MSG_WHISPER", "READY_CHECK", "PLAYER_LEVEL_UP", "PLAYER_DEAD",
+                      "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED" }) do
+    pcall(f.RegisterEvent, f, ev)                           -- (an event this game does not have is left out)
+end
+f:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
     if event == "INSPECT_READY" then
         pcall(inspected, arg1)
         return
     end
+    if event ~= "PLAYER_ENTERING_WORLD" and event ~= "DISPLAY_SIZE_CHANGED" and event ~= "UI_SCALE_CHANGED" then
+        pcall(happened, event, arg1, arg2, arg3, arg4)
+        return
+    end
     rescale()
     if event == "PLAYER_ENTERING_WORLD" then
+        if type(CompanionBeaconDB) ~= "table" then CompanionBeaconDB = {} end
         pcall(logs_on)
+        pcall(rings)
     end
 end)
 rescale()
 
 SLASH_COMPANIONBEACON1 = "/cbeacon"
-SlashCmdList["COMPANIONBEACON"] = function()
+SlashCmdList["COMPANIONBEACON"] = function(msg)
+    if type(msg) == "string" and msg:lower():match("^%s*rings%s*$") then
+        if type(CompanionBeaconDB) ~= "table" then CompanionBeaconDB = {} end
+        CompanionBeaconDB.hide_rings = not CompanionBeaconDB.hide_rings
+        local ok, can = pcall(rings)
+        if not (ok and can) then
+            print("|cffff8800Companion Beacon:|r this game has no switch for the quest-area rings")
+        elseif CompanionBeaconDB.hide_rings then
+            print("|cffff8800Companion Beacon:|r quest-area rings hidden on the minimap (/cbeacon rings again brings them back)")
+        else
+            print("|cffff8800Companion Beacon:|r quest-area rings will be back after /reload")
+        end
+        return
+    end
     if f:IsShown() then f:Hide() else f:Show() end
     print("|cffff8800Companion Beacon|r " .. (f:IsShown() and "shown" or "hidden"))
 end

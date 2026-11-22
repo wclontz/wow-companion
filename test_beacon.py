@@ -221,11 +221,11 @@ for fracs in ([0, 0.5, 1], [0.25, 0.754, 0.011], [1, 1, 0], ["blue", 0.3, "windo
 bad2, bad3 = beacon.encode_stats({"level": 21, "xp": 500, "xpmax": 1000}), beacon.encode_page(1, 1, b"Elwynn Forest", 0, 3)
 bad2[3] ^= 9
 bad3[10] ^= 1
-r = beacon.decode(draw_rows([row1, bad2, bad3, beacon.encode_page(4, 1, b"Bob\t20\tMAGE", 0, 4), EMPTY, EMPTY]))
+r = beacon.decode(draw_rows([row1, bad2, bad3, beacon.encode_page(4, 1, b"Bob\t20\tMAGE", 0, 4), EMPTY, EMPTY, EMPTY, EMPTY]))
 if not (r and r["inst"] == 33 and r["stats"] is None and [g["chan"] for g in r["pages"]] == [4]):
     ok = False
     print("FAIL damaged rows", r)
-r = beacon.decode(draw_rows([row1] + [EMPTY] * 5))                   # rows not drawn yet (black)
+r = beacon.decode(draw_rows([row1] + [EMPTY] * 7))                   # rows not drawn yet (black)
 if not (r and r["stats"] is None and r["pages"] == []):
     ok = False
     print("FAIL black rows", r)
@@ -238,4 +238,64 @@ for ver in (1, 2, 3, 4):
     if not (r and r["version"] == ver and r["inst"] == 36 and ("stats" in r) == (ver >= 3)):
         ok = False
         print("FAIL older strip", ver, r)
+# version 8: 8 rows and 7 bars (party health on bars 4-7); a version 7 strip (6 rows, 3 bars) in the same corner
+# is still read while the owner has not reloaded yet
+def corner(rows, fracs):
+    """The window's corner as _look grabs it: (ROWS + BARS) * CELL high, the strip at the bottom, its bars above."""
+    H, w, c = (beacon.ROWS + beacon.BARS) * beacon.CELL, beacon.CELLS * beacon.CELL, beacon.CELL
+    im = np.full((H, w, 3), 90, dtype=np.uint8)                      # the game behind it
+    st = np.asarray(draw_rows(rows))
+    im[H - st.shape[0]:] = st[:, :w]
+    top = H - st.shape[0]
+    for i, fr in enumerate(fracs):
+        y = top - (i + 1) * c
+        im[y:y + c] = 0
+        im[y:y + c, :round(fr * w), 1] = 255
+    return Image.fromarray(im)
+
+
+r = beacon.look_at(corner(strip({"level": 17, "target_level": 12}), [0.5, 0.25, 0.8, 1.0, 0.4, 0, 0]))
+if not (r and r["version"] == 8 and abs(r["stats"]["hp_frac"] - 0.5) < 0.01 and abs(r["stats"]["target_frac"] - 0.8) < 0.01
+        and [round(v, 1) for v in r["stats"]["party_frac"]] == [1.0, 0.4, 0.0, 0.0]):
+    ok = False
+    print("FAIL version 8 corner", r and r.get("stats"))
+old7 = list(row1)
+old7[7] = 7
+cs = sum(([0] + old7)[i] * (i - 7) for i in range(8, 46)) % 4096
+old7[45], old7[46] = cs >> 6, cs & 63
+r = beacon.look_at(corner([old7, beacon.encode_stats({"level": 17})] + [EMPTY] * 4, [0.6, 0.3, 0.0]))
+if not (r and r["version"] == 7 and abs(r["stats"]["hp_frac"] - 0.6) < 0.01 and "party_frac" not in r["stats"]):
+    ok = False
+    print("FAIL version 7 strip in the version 8 corner", r and r.get("stats"))
+if beacon.look_at(corner([EMPTY] * 8, [0] * 7)) is not None:
+    ok = False
+    print("FAIL no strip")
+# the version 8 texts
+d = {"texts": {"buffs": "Demon Skin\t1000600\t0\nBlood Pact\t0\t0\nOld One\t999000\t0\nStacky\t1000030\t3",
+               "cooldowns": "Shadowburn\t1000012", "supplies": "Soul Shard\t3\t15.0\nIce Cold Milk\t12\t0.5\nJunk\tx\t0.0",
+               "events": "7\tvendor\tBob\n8\tgather\tHerb Gathering: Peacebloom\nbad line\n9\twhisper\t",
+               "quest_areas": "1436\nWestfall Stew\t562\t310\nBad\t5000\t1\nShort\t1",
+               "skills": "s\tTailoring\t75\t150\nt\tAffliction\t8\ns\tbroken", "reputation": "Stormwind\t5\t1200\t6000\nx\t99\t1\t1"}}
+tm = beacon.timed(d, "buffs", now=1000000)
+if [(e["name"], e["left"], e.get("stacks")) for e in tm] != [("Demon Skin", 600, None), ("Blood Pact", None, None), ("Stacky", 30, 3)]:
+    ok = False
+    print("FAIL buffs", tm)
+if beacon.timed(d, "cooldowns", now=1000000) != [{"name": "Shadowburn", "left": 12}] or beacon.timed({}, "buffs") != []:
+    ok = False
+    print("FAIL cooldowns")
+if beacon.supplies(d) != [{"name": "Soul Shard", "n": 3, "kind": "shard"}, {"name": "Ice Cold Milk", "n": 12, "kind": "food"}]:
+    ok = False
+    print("FAIL supplies", beacon.supplies(d))
+if beacon.events(d) != [(7, "vendor", "Bob"), (8, "gather", "Herb Gathering: Peacebloom"), (9, "whisper", "")]:
+    ok = False
+    print("FAIL events", beacon.events(d))
+if beacon.quest_areas(d) != (1436, [{"title": "Westfall Stew", "x": 56.2, "y": 31.0}]) or beacon.quest_areas({}) is not None:
+    ok = False
+    print("FAIL quest areas", beacon.quest_areas(d))
+if beacon.skills(d) != {"skills": [{"name": "Tailoring", "rank": 75, "max": 150}], "talents": [{"name": "Affliction", "points": 8}]}:
+    ok = False
+    print("FAIL skills", beacon.skills(d))
+if beacon.reputation(d) != [{"name": "Stormwind", "standing": "Friendly", "at": 1200, "of": 6000}]:
+    ok = False
+    print("FAIL reputation", beacon.reputation(d))
 print("ALL PASS" if ok else "FAILED")

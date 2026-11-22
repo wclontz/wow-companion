@@ -195,9 +195,32 @@ def strip_summary():
                 "target_tapped": st.get("target_tapped"), "party": beacon.party(d), "gear": beacon.gear(d),
                 "minimap": beacon.minimap(d),
                 "money_trend": money_trend(tx.get("name"), st["money"]),
-                "quests": st["quests"], "quests_read": None if ql is None else len(ql)}
+                "quests": st["quests"], "quests_read": None if ql is None else len(ql), "more": strip_more()}
     except Exception:
         return None
+
+
+def strip_more():
+    """What a version-8 add-on sends besides the numbers, for the pages and the reminders: buffs, debuffs,
+    cooldowns (seconds left), what you carry, the party's health, skills, reputations. A part the strip has not
+    sent yet is None; None altogether without a version-8 strip."""
+    import beacon
+    d = beacon.latest()
+    if not d or (d.get("version") or 0) < 8 or not d.get("stats"):
+        return None
+    tx, st = d.get("texts") or {}, d["stats"]
+    ph = st.get("party_frac") or []
+    pl = beacon.party(d) or []
+    opts = dict((f[0], f[1]) for f in beacon.lines(d, "options") if len(f) == 2)
+    return {"buffs": beacon.timed(d, "buffs") if "buffs" in tx else None,
+            "debuffs": beacon.timed(d, "debuffs") if "debuffs" in tx else None,
+            "cooldowns": beacon.timed(d, "cooldowns") if "cooldowns" in tx else None,
+            "supplies": beacon.supplies(d) if "supplies" in tx else None,
+            "party_hp": [{"name": m["name"], "hp": None if i >= len(ph) or ph[i] is None else round(ph[i] * 100)}
+                         for i, m in enumerate(pl)],
+            "skills": beacon.skills(d) if "skills" in tx else None,
+            "reputation": beacon.reputation(d) if "reputation" in tx else None,
+            "rings": {"1": "shown", "0": "hidden"}.get(opts.get("rings"))}
 
 
 MONEY_SEEN = {}         # character -> (time, copper) at its first strip reading since the companion started
@@ -413,6 +436,7 @@ class Companion:
         self.players_seen = {}
         self.hostiles_seen = {}
         self.feed = deque(maxlen=40)
+        self.notices = deque(maxlen=12)       # whisper / ready check / level, from the add-on: shown for a minute
         self._dinged = set()
         # mob guid -> this fight: attacks (pace), its damage to you, both sides' attacks + misses
         self.duels = defaultdict(lambda: {"me": 0, "it": 0, "all": 0, "dmg": 0, "name": None, "t": 0,
@@ -1236,6 +1260,10 @@ class Companion:
                     if (info or {}).get("unit") == "coords" else []
             except Exception:
                 out["quest_spots"] = []
+            try:
+                out["places"] = places_on((info or {}).get("frame")) if (info or {}).get("unit") == "coords" else []
+            except Exception:
+                out["places"] = []
             unit = (info or {}).get("unit")
             if unit == "coords" and LOC is not None and MAPPER.place_now and                     (place == MAPPER.place_now or (info or {}).get("frame") == MAPPER.place_now):
                 out["me"] = [LOC.x, LOC.y] if LOC.x is not None else None
@@ -1671,6 +1699,16 @@ class Companion:
                      "cls": (by.get(f["slot"]) or {}).get("cls")} for f in self.screen["party"]]
         return [{**f, "name": names.get(f["slot"])} for f in self.screen["party"]]
 
+    def _buff_timers(self):
+        """Your buffs and how long each has left: the add-on's list when it sends one, else the screen's buff bar."""
+        try:
+            more = strip_more()
+            if more and more.get("buffs") is not None:
+                return [{"name": b["name"], "left": b["left"]} for b in more["buffs"]]
+        except Exception:
+            pass
+        return [{"name": b["name"], "left": b.get("left")} for b in (BUFFS.buffs if BUFFS and BUFFS.names() is not None else []) if b["name"]]
+
     def buff_status(self):
         """Reminders for your own buffs, and party members missing the ones you hand out."""
         now = time.time()
@@ -1682,11 +1720,24 @@ class Companion:
         except Exception:                                    # the reader looks, so the log decides
             pass
         known = self.cast_by.get(self.me_name) or ()         # (this character's: a session can hold two characters)
+        addon = None                                         # the add-on's own list of your buffs (version 8):
+        try:                                                 # right on every character's layout, and at once
+            more = strip_more()
+            if more and more.get("buffs") is not None:
+                addon = {b["name"]: b["left"] for b in more["buffs"]}
+        except Exception:
+            addon = None
         for sp in SELF_BUFFS:
             if sp not in known:
                 continue                                     # you don't have/use it
             if BETTER_BUFF.get(sp) in known:
                 continue                                     # replaced by the better one
+            if addon is not None:
+                if sp not in addon:
+                    mine.append({"spell": sp, "state": "missing", "source": "addon"})
+                elif addon[sp] is not None and addon[sp] <= 120:
+                    mine.append({"spell": sp, "state": "expiring", "left": addon[sp], "source": "addon"})
+                continue
             if on_screen is not None and sp in (BUFFS.lib if BUFFS else {}):
                 # the buff bar on screen is the truth (instant); the log is the fallback
                 if sp not in on_screen:
@@ -1952,7 +2003,7 @@ class Companion:
             "spells": spells,
             "spell_eff": self.spell_effectiveness(),
             "buffs": {**self.buff_status(), "on": sorted(BUFFS.names() or []) if BUFFS else None,
-                      "timers": [{"name": b["name"], "left": b.get("left")} for b in (BUFFS.buffs if BUFFS and BUFFS.names() is not None else []) if b["name"]]},
+                      "timers": self._buff_timers()},
             "aggro": self.aggro_status(),
             "group": self.grp.snapshot(self.last_t or now, (self.player["x"], self.player["y"]),
                                        self.to_map_pct, self.cur_map, screen_party=self._screen_party()),
@@ -2357,7 +2408,38 @@ class Tailer(threading.Thread):
                         print("closing look-ups:", repr(e), file=sys.stderr)
             self._strip_quests = True                    # (not the first time: that list came off the tracker)
             self._strip_quests_who = who
+        try:
+            self._strip_events(d)
+        except Exception as e:
+            print("strip events:", repr(e), file=sys.stderr)
         return (d.get("texts") or {}).get("target")
+
+    def _strip_events(self, d):
+        """What the add-on says happened (its last 6, text 24). A vendor, trainer, flight master, mailbox, bank,
+        inn or something gathered is remembered where you stand (places.py); a whisper, a ready check and a new
+        level go to the pages as a notice. The first list after a start is old news."""
+        import beacon
+        if "events" not in (d.get("texts") or {}):
+            return
+        evs = beacon.events(d)
+        seen = getattr(self, "_ev_seen", None)
+        self._ev_seen = set(evs)
+        if seen is None:
+            return
+        for n, kind, who in evs:
+            if (n, kind, who) in seen:
+                continue
+            if kind in PLACES_KINDS and PLACES is not None:
+                pos = d.get("pos")
+                if pos and d.get("continent"):
+                    what = who.split(": ", 1)[-1] if kind == "gather" else who
+                    PLACES.add(kind, what, d["continent"], pos[0], pos[1], (d.get("texts") or {}).get("zone"))
+            elif kind in ("whisper", "ready", "level"):
+                text = {"whisper": f"Whisper from {who.split('-')[0]}" if who else "A whisper",
+                        "ready": "Ready check" + (f" ({who.split('-')[0]})" if who else ""),
+                        "level": f"Level {who}!" if who else "Level up!"}[kind]
+                with self.comp.lock:
+                    self.comp.notices.append({"t": time.time(), "kind": kind, "text": text})
 
     def _beacon_dungeon(self):
         """The dungeon the position add-on says you are inside right now (its "in an instance" flag + the
@@ -2502,6 +2584,32 @@ NAMER = None
 QWINDOW = None
 MOBS = None
 BUFFS = None
+PLACES = None           # places.Places: vendors, trainers, flight masters, gathering spots (from the add-on's events)
+PLACES_KINDS = ("vendor", "repair", "trainer", "flight", "mail", "bank", "inn", "gather")
+
+
+def places_on(frame):
+    """The remembered places of the continent the map shows, in the coords of the zone it is drawn in."""
+    if PLACES is None or not frame:
+        return []
+    import quadmap
+    from worldmap import continent
+    return PLACES.on_map(continent(frame), quadmap.zone_bounds().get(frame))
+
+
+def game_quest_spots():
+    """The quests the game itself marks on the zone map you are on (add-on version 8): exact, and there at once.
+    -> [{"quest", "kind": "area", "zone", "x", "y", "label", "game": True}]"""
+    import beacon
+    d = beacon.latest()
+    qa = beacon.quest_areas(d) if d else None
+    if not qa:
+        return []
+    zone = beacon.zone_name(d)
+    if not zone:
+        return []
+    return [{"quest": a["title"], "kind": "area", "zone": zone, "x": a["x"], "y": a["y"], "label": a["title"], "game": True}
+            for a in qa[1]]
 PARTY_NAMES = None
 LOC = None
 MAPPER = None           # minimap stitcher (maps of dungeons)
@@ -2534,6 +2642,14 @@ def char_reading():
     rec = {"name": name, "level": st["level"], "xp": st.get("xp"), "xpmax": st.get("xpmax"), "money": st.get("money"),
            "gear": g.get("score") if g.get("whole") else None, "ilvl": g.get("avg") if g.get("whole") else None,
            "zone": ((d or {}).get("texts") or {}).get("zone") or None}
+    try:                                                 # professions and talent points (add-on version 8)
+        sk = beacon.skills(d)
+        if sk["skills"]:
+            rec["skills"] = {s["name"]: s["rank"] for s in sk["skills"]}
+        if sk["talents"]:
+            rec["talents"] = {t["name"]: t["points"] for t in sk["talents"]}
+    except Exception:
+        pass
     with COMP.lock:
         if COMP.me_name == name and COMP.segments:
             rec.update(sess=round(COMP.segments[0][0]), kills=len(COMP.kills), deaths=len(COMP.deaths),
@@ -2554,16 +2670,20 @@ def quest_spots(frame=None):
     """Where the looked-up quests still in your log send you, for the maps: each place as the look-up gave it
     (zone, x, y in that zone's map coords) plus, when both zones' edges are known, the same place in the coords of
     the zone the map on the page is drawn in (fx, fy)."""
-    if not ASKER:
-        return []
     import quadmap
+    try:
+        game = game_quest_spots()
+    except Exception:
+        game = []
+    if not ASKER and not game:
+        return []
     titles = {q.get("title") for q in (QUESTS.quests if QUESTS else [])} or None
     done = {q.get("title") for q in (QUESTS.quests if QUESTS else []) if q.get("done")}
     bb = quadmap.zone_bounds()
     low = {z.lower(): z for z in bb}
     bf = bb.get(frame) if frame else None
     out = []
-    for s in ASKER.spots(titles):
+    for s in game + (ASKER.spots(titles) if ASKER else []):
         if s["quest"] in done and s.get("kind") == "objective":
             continue                                             # everything collected: only the way back is left
         s = dict(s)
@@ -2582,7 +2702,7 @@ def quest_spots(frame=None):
     return out
 
 
-LOCAL_ONLY = ("/api/restore", "/api/import", "/api/trail/clear", "/api/label/rename", "/api/ask", "/api/answer",
+LOCAL_ONLY = ("/api/restore", "/api/import", "/api/friends/forget", "/api/trail/clear", "/api/label/rename", "/api/ask", "/api/answer",
               "/api/claude", "/api/claude/login")
 
 
@@ -2632,9 +2752,31 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, qr.svg(urls[0]).encode(), "image/svg+xml")
         elif self.path.startswith("/api/backups"):
             import mapshare
-            self._send(200, json.dumps({"backups": mapshare.list_backups(),
-                                        "maps": [{"id": g, "name": (((MAPPER.grids.grids.get(g) or {}).get("name") or g) if MAPPER else g)}
+            self._send(200, json.dumps({"backups": mapshare.list_backups(), "friends": mapshare.friends(),
+                                        "maps": [{"id": g, "name": (((MAPPER.grids.grids.get(g) or {}).get("name") or g) if MAPPER else g),
+                                                  "zones": mapshare.zones(g)}
                                                  for g in mapshare._grid_ids()]}).encode(), "application/json")
+        elif self.path.startswith("/api/sendmap"):
+            # "Send my map": the drawn map only, a few MB (mapshare.send) - a file to hand to a friend
+            import mapshare
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            gid = os.path.basename((qs.get("map") or [""])[0])
+            zone = (qs.get("zone") or [""])[0] or None
+            try:
+                data = mapshare.send(gid, zone)
+            except (OSError, ValueError, KeyError) as e:
+                self._send(404, str(e).encode(), "text/plain")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="map_{"".join(ch for ch in (zone or gid) if ch.isalnum())}_{time.strftime("%Y-%m-%d")}.zip"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            try:
+                self.wfile.write(data)
+            except ConnectionError:
+                pass
         elif self.path.startswith("/api/export"):
             import mapshare
             from urllib.parse import urlparse, parse_qs
@@ -2700,6 +2842,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 snap["quest_spots"] = []
                 print("quest spots:", repr(e), file=sys.stderr)
+            try:
+                snap["places"] = places_on((snap.get("zone_map") or {}).get("frame"))
+            except Exception:
+                snap["places"] = []
+            with COMP.lock:
+                snap["notices"] = [n for n in COMP.notices if time.time() - n["t"] < 60]
             snap["quests_info"] = {"busy": QUESTS.busy, "t": QUESTS.t, "error": QUESTS.error,
                                    "qwindow": QUESTS.qwindow} if QUESTS else None
             snap["asks"] = [{k: a.get(k) for k in ("id", "quest", "status", "answer", "by", "t", "spots")}
@@ -2790,6 +2938,16 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     n = int(self.headers.get("Content-Length", 0))
                     data = self.rfile.read(n)
+                    if mapshare.kind(data) == mapshare.PICTURE:
+                        # a friend's "send my map": kept beside your maps and drawn under them; nothing of yours
+                        # changes, so no backup and Mapping stays as it is. The maps are drawn again.
+                        cont, kept = mapshare.receive(data)
+                        if MAPPER is not None:
+                            for g in mapshare._grid_ids():
+                                MAPPER.world.dirty[g] = time.time() - 10
+                        self._send(200, json.dumps({"ok": True, "friend": True, "map": cont, "added": kept,
+                                                    "how": "kept as a friend's map"}).encode(), "application/json")
+                        return
                     if MAPPER is not None:
                         MAPPER.set_mapping(False)
                     with COMP.lock:
@@ -2800,6 +2958,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(out).encode(), "application/json")
             except Exception as e:
                 self._send(400, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+            return
+        if self.path == "/api/friends/forget":
+            import mapshare
+            n = mapshare.forget()
+            if MAPPER is not None:
+                for g in mapshare._grid_ids():
+                    MAPPER.world.dirty[g] = time.time() - 10
+            self._send(200, json.dumps({"ok": True, "removed": n}).encode(), "application/json")
             return
         if self.path == "/api/label/rename":
             try:
@@ -2932,7 +3098,12 @@ def main():
             print('  {"wow_dir": "D:/Games/World of Warcraft"}')
             sys.exit(1)
         os.makedirs(LOG_DIR, exist_ok=True)      # a game that has never logged: the folder comes with its first log
-    global SCREEN, QUESTS, ASKER, NAMER, LOC, MOBS, BUFFS, PARTY_NAMES, MAPPER, CHARLOG
+    global SCREEN, QUESTS, ASKER, NAMER, LOC, MOBS, BUFFS, PARTY_NAMES, MAPPER, CHARLOG, PLACES
+    try:
+        import places
+        PLACES = places.Places()
+    except Exception as e:
+        print("places not loaded:", repr(e), file=sys.stderr)
     if "--no-screen" not in sys.argv:
         try:
             from screenread import ScreenReader

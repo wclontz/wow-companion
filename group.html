@@ -148,6 +148,9 @@ function renderMembers(s){
   const aggroOn = new Set(g.loose.filter(x => now - x.t < 15).map(x => x.on));
   // gear scores from the add-on's strip (yours at once; a party member's once the add-on has inspected them)
   const gear = (s.strip && s.strip.gear) || null;
+  // party health off the add-on's own bars (version 8): right whatever the party frames look like
+  const barHp = ((s.strip && s.strip.more && s.strip.more.party_hp) || []);
+  window._barHp = n => { const e = barHp.find(p => String(p.name || "").split("-")[0].toLowerCase() === String(n || "").split("-")[0].toLowerCase()); return e ? e.hp : null; };
   const short = n => String(n || "").split("-")[0].split(" ")[0].toLowerCase();
   const gearOf = m => !gear ? null : m.me ? gear.me : (gear.party || []).find(p => short(p.name) === short(m.name)) || null;
   const gearTip = x => `gear score ${x.score} = item level x quality over ${x.worn} items · average item level ${x.avg}` +
@@ -157,6 +160,7 @@ function renderMembers(s){
   $("partyNote").textContent = (g.in_group ? "· from the combat log (updates as the game writes it)" : "· join a group and your party shows up here") + team;
   $("members").innerHTML = g.members.map(m => {
     const col = CLASS[m.cls] || "#d8cfc0";
+    if (!m.me && !m.maxhp && m.hp_frac == null && window._barHp(m.name) != null) m.hp_frac = window._barHp(m.name) / 100;
     const hpTxt = m.maxhp ? `${fmt(m.hp)} / ${fmt(m.maxhp)}` : m.hp_frac != null ? `${Math.round(m.hp_frac * 100)}%` : "—";
     if (m.live && !m.maxhp) { m.hp = m.hp_frac; m.maxhp = 1; }
     const pw = m.maxpower ? bar(`p${m.ptype in PNAME ? m.ptype : 0}`, m.power, m.maxpower, `${PNAME[m.ptype] || "power"} ${Math.round(m.power / m.maxpower * 100)}%`) : "<div></div>";

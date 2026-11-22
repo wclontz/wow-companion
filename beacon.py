@@ -15,10 +15,20 @@ import time
 
 import numpy as np
 
-CELL, CELLS, ROWS, VERSION = 4, 47, 6, 7
-BARS = 3                                                    # the bars above the strip (version 7)
+CELL, CELLS, ROWS, VERSION = 4, 47, 8, 8
+BARS = 7                                                    # the bars above the strip (3 in version 7)
 PAGE = 20
-TEXT_ROWS = (3, 4, 5, 6)
+TEXT_ROWS = (3, 4, 5, 6, 7, 8)
+
+
+def shape(version):
+    """(rows, bars) of a strip of that version: 8 and 7 since version 8, 6 and 3 before."""
+    return (8, 7) if version >= 8 else (6, 3)
+
+
+# (55-63: the numbers 11-50 are the quest log's, 51-54 the party's gear; a square holds 0-63)
+NAMES_V8 = {55: "buffs", 56: "debuffs", 57: "cooldowns", 58: "supplies", 59: "events", 60: "quest_areas",
+            61: "skills", 62: "reputation", 63: "options"}
 
 
 def text_name(chan):
@@ -35,6 +45,8 @@ def text_name(chan):
         return "name"
     if 51 <= chan <= 54:
         return f"gear{chan - 50}"
+    if chan in NAMES_V8:
+        return NAMES_V8[chan]
     if 11 <= chan <= 50:
         return f"q{chan - 10}"
     return None
@@ -210,7 +222,7 @@ def decode(img):
         for k in range(n):
             x = x * 64 + v[i + k]
         return x
-    if get(46, 2) != sum(v[i] * (i - 7) for i in range(8, 46)) % 4096 or v[8] not in (1, 2, 3, 4, 5, 6, VERSION):
+    if get(46, 2) != sum(v[i] * (i - 7) for i in range(8, 46)) % 4096 or v[8] not in (1, 2, 3, 4, 5, 6, 7, VERSION):
         return None
     flags, z = v[10], v[11]
     d = {"seq": v[9], "indoors": bool(flags & 2), "taxi": bool(flags & 4), "instance": bool(flags & 8),
@@ -234,22 +246,24 @@ def decode(img):
         d["fits"] = min(off(p), off((p[1], p[0]))) <= 0.02
     d["continent"] = CONTINENTS.get(d["inst"]) if not d["instance"] else None
     d["version"] = v[8]
-    if v[8] >= 3 and a.shape[0] >= ROWS * CELL:             # the other rows: each right, or left out
+    rows = shape(v[8])[0]
+    if v[8] >= 3 and a.shape[0] >= rows * CELL:             # the other rows: each right, or left out
         d["stats"] = _stats(values(row_px(1)))               # (a version 2 strip had other rows: row 1 only)
-        d["pages"] = [pg for pg in (_page(values(row_px(r - 1)), r) for r in TEXT_ROWS) if pg]
+        d["pages"] = [pg for pg in (_page(values(row_px(r - 1)), r) for r in TEXT_ROWS[:rows - 2]) if pg]
     return d
 
 
-def read_bars(img):
-    """The picture of the BARS bars above the strip (the strip's width, BARS * CELL high; bar 1 is the lowest) ->
+def read_bars(img, bars=None):
+    """The picture of the bars above the strip (the strip's width, bars * CELL high; bar 1 is the lowest) ->
     how full each is, 0-1, or None for a bar that can't be trusted: blue (the game refused the add-on), covered by
     something, or not one lit stretch from the left."""
+    bars = BARS if bars is None else bars
     a = np.asarray(img.convert("RGB"), dtype=np.float32)
-    if a.shape[0] < BARS * CELL or a.shape[1] < CELLS * CELL:
-        return [None] * BARS
+    if a.shape[0] < bars * CELL or a.shape[1] < CELLS * CELL:
+        return [None] * bars
     out = []
-    for i in range(BARS):
-        y = (BARS - 1 - i) * CELL
+    for i in range(bars):
+        y = (bars - 1 - i) * CELL
         px = a[y + 1:y + 3, :CELLS * CELL].mean(0)          # one colour per column, off the bar's middle rows
         r, g, b = px[:, 0], px[:, 1], px[:, 2]
         lit = (g > 128) & (r < 110) & (b < 110)
@@ -279,13 +293,10 @@ def _look():
         return None
     # the strip sits in the window's bottom-right corner (since 2026-11-19); an add-on from before that drew
     # it top-left, so that corner is looked at when the first has nothing
-    w, h, bh = CELLS * CELL, ROWS * CELL, BARS * CELL
-    img = fastgrab.grab((rect[2] - w, rect[3] - h - bh, rect[2], rect[3]))      # the strip with its bars above it
-    d = decode(img.crop((0, bh, w, bh + h))) if img is not None else None
+    w, H = CELLS * CELL, (ROWS + BARS) * CELL
+    img = fastgrab.grab((rect[2] - w, rect[3] - H, rect[2], rect[3]))           # the strip with its bars above it
+    d = look_at(img) if img is not None else None
     if d:
-        if d.get("version", 1) >= 7 and d.get("stats"):
-            hp, power, target = read_bars(img.crop((0, 0, w, bh)))
-            d["stats"].update(hp_frac=hp, power_frac=power, target_frac=target if d["stats"]["target"] else None)
         d["t"] = time.time()
         return d
     img = fastgrab.grab((rect[0], rect[1], rect[0] + w, rect[1] + h))           # (an add-on from before 2026-11-19)
@@ -293,6 +304,114 @@ def _look():
     if d:
         d["t"] = time.time()
     return d
+
+
+def look_at(img):
+    """A picture of the window's bottom-right corner, the strip's width and (ROWS + BARS) * CELL high (the newest
+    strip with its bars) -> the reading with the bars' fractions in "stats", or None. An older add-on's strip is
+    shorter: it ends at the same bottom edge, so it is looked for there too."""
+    w, H = CELLS * CELL, img.height
+    for rows, bars in ((ROWS, BARS), (6, 3)):
+        top = H - rows * CELL
+        if top - bars * CELL < 0:
+            continue
+        d = decode(img.crop((0, top, w, H)))
+        if not d or shape(d.get("version", 1)) != (rows, bars):
+            if d and d.get("version", 1) < 7 and rows == 6:
+                return d                                     # (before the bars)
+            continue
+        if d.get("stats"):
+            fr = read_bars(img.crop((0, top - bars * CELL, w, top)), bars)
+            d["stats"].update(hp_frac=fr[0], power_frac=fr[1], target_frac=fr[2] if d["stats"]["target"] else None)
+            if bars >= 7:
+                d["stats"]["party_frac"] = fr[3:7]
+        return d
+    return None
+
+
+def lines(d, name):
+    """A version-8 text as rows of fields: [[field, ...], ...] ([] when the strip has not sent it)."""
+    s = ((d or {}).get("texts") or {}).get(name) or ""
+    return [ln.split("\t") for ln in s.split("\n") if ln]
+
+
+def timed(d, name, now=None):
+    """buffs / debuffs / cooldowns -> [{"name", "left" seconds or None (does not run out), "stacks"}]"""
+    now = time.time() if now is None else now
+    out = []
+    for f in lines(d, name):
+        try:
+            end = int(f[1]) if len(f) > 1 else 0
+        except ValueError:
+            continue
+        if end and end < now - 2:
+            continue                                         # (it ran out; the text has not caught up)
+        e = {"name": f[0], "left": max(0, round(end - now)) if end else None}
+        if len(f) > 2 and f[2].isdigit() and int(f[2]) > 1:
+            e["stacks"] = int(f[2])
+        out.append(e)
+    return out
+
+
+def supplies(d):
+    """What you carry -> [{"name", "n", "kind"}] (kind: food, potion, reagent, ammo, shard, other)."""
+    out = []
+    for f in lines(d, "supplies"):
+        if len(f) < 3 or not f[1].isdigit():
+            continue
+        cls, _, sub = f[2].partition(".")
+        kind = ("shard" if f[0] == "Soul Shard" else "ammo" if cls == "6" else "reagent" if cls == "5"
+                else "food" if (cls, sub) == ("0", "5") else "potion" if (cls, sub) in (("0", "1"), ("0", "2"), ("0", "3")) else "other")
+        out.append({"name": f[0][:60], "n": int(f[1]), "kind": kind})
+    return out
+
+
+def events(d):
+    """What happened lately -> [(number, kind, who)] oldest first."""
+    out = []
+    for f in lines(d, "events"):
+        if len(f) >= 2 and f[0].isdigit() and f[1].isalpha():
+            out.append((int(f[0]), f[1][:12], (f[2] if len(f) > 2 else "")[:80]))
+    return out
+
+
+def quest_areas(d):
+    """The quests the game marks on the zone map -> (map id, [{"title", "x", "y"}] in zone % 0-100) or None."""
+    ls = lines(d, "quest_areas")
+    if not ls or not ls[0][0].isdigit():
+        return None
+    out = []
+    for f in ls[1:]:
+        if len(f) == 3 and f[1].isdigit() and f[2].isdigit() and int(f[1]) <= 1000 and int(f[2]) <= 1000:
+            out.append({"title": f[0][:80], "x": int(f[1]) / 10, "y": int(f[2]) / 10})
+    return int(ls[0][0]), out
+
+
+def skills(d):
+    """-> {"skills": [{"name", "rank", "max"}], "talents": [{"name", "points"}]}"""
+    sk, ta = [], []
+    for f in lines(d, "skills"):
+        if f[0] == "s" and len(f) == 4 and f[2].isdigit() and f[3].isdigit():
+            sk.append({"name": f[1][:40], "rank": int(f[2]), "max": int(f[3])})
+        elif f[0] == "t" and len(f) == 3 and f[2].isdigit():
+            ta.append({"name": f[1][:40], "points": int(f[2])})
+    return {"skills": sk, "talents": ta}
+
+
+STANDINGS = ("", "Hated", "Hostile", "Unfriendly", "Neutral", "Friendly", "Honored", "Revered", "Exalted")
+
+
+def reputation(d):
+    """-> [{"name", "standing", "at", "of"}]"""
+    out = []
+    for f in lines(d, "reputation"):
+        try:
+            st, at, of = int(f[1]), int(f[2]), int(f[3])
+        except (ValueError, IndexError):
+            continue
+        if 1 <= st <= 8:
+            out.append({"name": f[0][:50], "standing": STANDINGS[st], "at": at, "of": of})
+    return out
 
 
 class Texts:

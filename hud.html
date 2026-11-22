@@ -378,8 +378,9 @@ function renderTop(s){
   }
   else { f.textContent = `data ${dur(s.lag)} old`; f.className = "fresh " + (s.lag < 150 ? "ok" : "warn"); }
   const a = $("alert");
-  a.hidden = !s.hostiles.length;
-  a.textContent = s.hostiles.length ? `⚔ Hostile nearby: ${s.hostiles.join(", ")}` : "";
+  const notes = (s.notices || []).map(n => (n.kind === "whisper" ? "✉ " : n.kind === "ready" ? "✔ " : "★ ") + n.text);
+  a.hidden = !s.hostiles.length && !notes.length;
+  a.textContent = [s.hostiles.length ? `⚔ Hostile nearby: ${s.hostiles.join(", ")}` : ""].concat(notes).filter(Boolean).join("  ·  ");
 }
 
 function renderBuffAggro(s){
@@ -477,6 +478,20 @@ function renderPurse(s){
     const c = p.wear <= 20 ? "#ff6b5a" : p.wear <= 40 ? "#ffb84a" : "";
     parts.push(`<span title="your most worn piece of gear: how much is left"${c ? ` style="color:${c}"` : ""}>🔨 ${Math.round(p.wear)}%${p.wear <= 20 ? " repair ⚠" : ""}</span>`);
   }
+  // what you carry (add-on version 8): soul shards, food and drink, potions; and spells cooling down
+  const more = p.more || {};
+  if (more.supplies) {
+    const sum = k => more.supplies.filter(x => x.kind === k).reduce((n, x) => n + x.n, 0);
+    const tip = k => more.supplies.filter(x => x.kind === k).map(x => `${x.n} ${x.name}`).join(", ");
+    const sh = more.supplies.find(x => x.kind === "shard");
+    if (sh) parts.push(`<span title="soul shards"${sh.n <= 1 ? ` style="color:#ffb84a"` : ""}>🟣 ${sh.n}</span>`);
+    if (sum("food")) parts.push(`<span title="${esc(tip("food"))}"${sum("food") <= 4 ? ` style="color:#ffb84a"` : ""}>🍞 ${sum("food")}</span>`);
+    if (sum("potion")) parts.push(`<span title="${esc(tip("potion"))}">🧪 ${sum("potion")}</span>`);
+    if (sum("ammo")) parts.push(`<span title="${esc(tip("ammo"))}"${sum("ammo") <= 200 ? ` style="color:#ffb84a"` : ""}>🏹 ${sum("ammo")}</span>`);
+  }
+  if (more.cooldowns && more.cooldowns.length)
+    parts.push(`<span title="spells on your bars that are cooling down">⏱ ` + more.cooldowns.slice(0, 4).map(c =>
+      `${esc(c.name)} ${c.left >= 60 ? Math.ceil(c.left / 60) + "m" : c.left + "s"}`).join(", ") + `</span>`);
   el.innerHTML = parts.join(` <span class="dim">·</span> `);
 }
 
@@ -830,7 +845,10 @@ function tileImg(url, onload) {
 }
 
 // places a quest look-up gave (start / objective / turn-in), drawn on a map: at(fx, fy) -> card pixels
-const SPOT_COL = {start: "#ffd24a", turnin: "#ffd24a", objective: "#5fd6ff"};
+const SPOT_COL = {start: "#ffd24a", turnin: "#ffd24a", objective: "#5fd6ff", area: "#7dffb0",
+  vendor: "#e8d5a8", repair: "#e8d5a8", trainer: "#c9a7ff", flight: "#9ad0ff", mail: "#ffffff", bank: "#ffd24a", inn: "#ffb38a", gather: "#8fe36b"};
+// the letter in a mark: quests ! and ?, places by what they are (V vendor, R repair, T trainer, F flight, M mail, B bank, I inn)
+const SPOT_CH = {start: "!", turnin: "?", vendor: "V", repair: "R", trainer: "T", flight: "F", mail: "M", bank: "B", inn: "I"};
 function drawQuestSpots(ctx, spots, at, w, h, picked, edge){
   ctx.save(); ctx.font = "600 11px Segoe UI"; ctx.textBaseline = "middle";
   (spots || []).forEach(sp => {
@@ -857,7 +875,7 @@ function drawQuestSpots(ctx, spots, at, w, h, picked, edge){
     ctx.beginPath(); ctx.moveTo(a, b - r); ctx.lineTo(a + r, b); ctx.lineTo(a, b + r); ctx.lineTo(a - r, b); ctx.closePath();
     ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#000"; ctx.textAlign = "center";
-    ctx.fillText(sp.kind === "start" ? "!" : sp.kind === "turnin" ? "?" : "", a, b + .5);
+    ctx.fillText(SPOT_CH[sp.kind] || "", a, b + .5);
     const text = sp.label || sp.quest;
     if (on && text) { ctx.textAlign = "left"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.85)";
       ctx.strokeText(text, a + r + 4, b); ctx.fillStyle = "#fff3cf"; ctx.fillText(text, a + r + 4, b); }
@@ -925,6 +943,7 @@ function renderZoneBuilt(s, U, img, msg){
   const tr = !showPath || (U.world && U.trail) ? [] : (loc.trail || []);
   if (tr.length > 1) { ctx.strokeStyle = "rgba(255,0,255,.9)"; ctx.lineWidth = 2; ctx.beginPath();
     tr.forEach((p, i) => { const [a, b] = P(p[1], p[2]); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); ctx.stroke(); }
+  drawQuestSpots(ctx, (s.places || []).map(p => ({...p, quest: "\u0000", label: ""})), P, w, h, "\u0001", false);   // places: small, no names
   drawQuestSpots(ctx, s.quest_spots, P, w, h, selQuest, true);
   if (meG || loc.x != null) { const [a, b] = meG ? [ox + meG[0] * sc, oy + meG[1] * sc] : P(loc.x, loc.y);
     ctx.fillStyle = "#f0c968"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a, b, 7, 0, 7); ctx.fill(); ctx.stroke(); }

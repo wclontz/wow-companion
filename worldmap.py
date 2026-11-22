@@ -12,6 +12,7 @@ redrawn when the shots that cover it changed. Files: maps/world/<continent>/meta
 tiles/L<layer>_<tx>_<ty>.png
 """
 import hashlib
+import json
 import math
 import os
 import time
@@ -149,7 +150,18 @@ class WorldMap(QuadMap):
             pick = self.__dict__.setdefault("_pick", {})      # (place, layer, square) -> (its shots, their order)
             # drawn at the sharpest zoom present (the indoor view's), so city detail is never shrunk away
             ref = max([R["k"] for c, R in items if R.get("k")] or [m.get("ref_k") or 0]) or None
-            if not ref or not items:
+            under = None                                  # a friend's map of this continent, drawn under yours
+            try:
+                import mapshare
+                gr = json.load(open(os.path.join(self._dir(place), "grid.json"), encoding="utf-8"))
+                if gr.get("aligned") and gr.get("continent") and gr.get("w0"):
+                    under = mapshare.Under(gr["continent"], gr["w0"], ref or m.get("draw_k"))
+                    under = under if under.ok else None
+            except (OSError, ValueError):
+                pass
+            if under is not None and not ref:
+                ref = under.ref
+            if not ref or not (items or under):
                 return None
             if m.get("draw_k") and abs(m["draw_k"] - ref) > 0.02 * ref:
                 m["tiles"] = {}                       # the zoom everything is drawn at changed: redraw all
@@ -159,7 +171,7 @@ class WorldMap(QuadMap):
             old = m.get("tiles") or {}
             new = {}
             drawn = 0
-            for L in sorted({R["layer"] for c, R in items}):
+            for L in sorted({R["layer"] for c, R in items} | (set(under.have) if under else set())):
                 shots = []
                 for c, R in items:
                     if R["layer"] != L:
@@ -203,18 +215,22 @@ class WorldMap(QuadMap):
                                                           round(qy * G - (py - ws / 2)) * s, G * s))
                         memo = pick[(place, L, qx, qy)] = (tid, tuple(mapmarks.order(scores)[:8]))
                     tiles.setdefault((qx * G // T, qy * G // T), []).append(((qx, qy), [ids[k] for k in memo[1]]))
+                below = under.tiles(L, T) if under else set()
+                for key in below:
+                    tiles.setdefault(key, [])
                 lt = {}
                 for (tx, ty), squares in tiles.items():
                     key = f"{tx},{ty}"
                     sig = hashlib.md5(repr(sorted(
                         (s, [(shots[i][2]["id"], round(shots[i][3]["k"], 3), bool(shots[i][2].get("mapping"))) for i in ids])
                         for s, ids in squares)
-                    ).encode() + repr(round(ref, 3)).encode() + b"v3").hexdigest()
+                    ).encode() + repr(round(ref, 3)).encode() + b"v3"
+                        + (under.stamp.encode() if (tx, ty) in below else b"")).hexdigest()
                     lt[key] = sig
                     name = f"L{L}_{tx}_{ty}.png"
                     if (old.get(str(L)) or {}).get(key) == sig and os.path.exists(os.path.join(d, name)):
                         continue                      # nothing changed under this tile
-                    canvas = Image.new("RGBA", (T, T), (0, 0, 0, 0))
+                    canvas = (under.tile(L, tx, ty, T) if (tx, ty) in below else None) or Image.new("RGBA", (T, T), (0, 0, 0, 0))
                     cache = {}
 
                     def piece(i, qx, qy):             # shot i's part of square (qx, qy), at the map's zoom
@@ -292,8 +308,10 @@ class WorldMap(QuadMap):
                         except OSError:
                             pass
             m["tiles"] = new
-            us = [ref * c["x"] for c, R in items]
-            vs = [ref * c["y"] for c, R in items]
+            us = [ref * c["x"] for c, R in items] + [v for lt in new.values() for key in lt
+                                                     for v in (int(key.split(",")[0]) * T + 200, int(key.split(",")[0]) * T + T - 200)]
+            vs = [ref * c["y"] for c, R in items] + [v for lt in new.values() for key in lt
+                                                     for v in (int(key.split(",")[1]) * T + 200, int(key.split(",")[1]) * T + T - 200)]
             m["bbox"] = [int(min(us)) - 200, int(min(vs)) - 200, int(max(us)) + 200, int(max(vs)) + 200]
             m["drawn"] = {L: True for L in new}
             self.save(place)
