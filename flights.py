@@ -49,7 +49,7 @@ POINTS = [
     # Kalimdor: Alliance
     (A, "Teldrassil", 58.4, 94.0, "Rut'theran Village", "Vesprystus"),
     (A, "Darkshore", 36.3, 45.6, "Auberdine", "Caylais Moonfeather"),
-    (A, "Ashenvale", 34.4, 48.0, "Astranaar", "Daelyn Forestsong"),
+    (A, "Ashenvale", 34.4, 48.0, "Astranaar", "Daelyshia"),
     (A, "Stonetalon Mountains", 36.4, 7.2, "Stonetalon Peak", "Teloren"),
     (A, "Desolace", 64.7, 10.5, "Nijel's Point", "Baritanas Skyriver"),
     (A, "Dustwallow Marsh", 67.5, 51.3, "Theramore", "Baldruc"),

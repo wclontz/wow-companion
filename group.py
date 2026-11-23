@@ -73,6 +73,11 @@ class GroupTracker:
         self.aggro_log = deque(maxlen=30)       # threat rips and mobs the tank never picked up
         self.mob_dmg = {}                       # mob guid -> {member guid: [damage, first hit t]}
         self.me = None
+        self.on_tally = None                    # callback(kind "dmg" | "heal" | "taken", member's name, amount)
+
+    def _tally(self, kind, name, amt):
+        if self.on_tally and amt > 0:
+            self.on_tally(kind, name, amt)
 
     # -------------------------------------------------- membership
     def _is_member(self, guid, flags):
@@ -179,6 +184,7 @@ class GroupTracker:
                 f["mobs"].add(dg)
                 src_m["dmg"] += amt
                 f["dmg"][src_m["name"]] += amt
+                self._tally("dmg", src_m["name"], amt)
             if dst_m and sf & T_NPC:
                 f = self._touch(t)
                 f["mobs"].add(sg)
@@ -193,6 +199,7 @@ class GroupTracker:
                         pass
                 dst_m["last_hits"].append((t, short(sn), spell, amt + absorbed, hp_after))
                 f["taken"][dst_m["name"]] += amt
+                self._tally("taken", dst_m["name"], amt)
                 if spell == "Melee":
                     dst_m["melee_taken"] += 1
                     dst_m["melee_t"].append(t)
@@ -210,6 +217,7 @@ class GroupTracker:
             if src_m:
                 src_m["heal"] += amt - over
                 src_m["over"] += over
+                self._tally("heal", src_m["name"], amt - over)
                 if self.fight and t - self.fight["last"] <= FIGHT_GAP:
                     self.fight["heal"][src_m["name"]] += amt - over
                 if src_m["guid"] == self.me and dst_m:

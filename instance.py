@@ -180,8 +180,10 @@ def members(r):
     def one(n, m):
         if "gear" not in m:                     # saved before we knew that number was item level
             m = {"cls": m.get("cls"), "gear": m.get("lvl"), "gear_end": m.get("lvl_end")}
+        did = (r.get("tally") or {}).get(n) or {}
         return dict(name=n, lvl=m.get("lvl"), lvl_end=m.get("lvl_end"), gear=m.get("gear"),
-                    gear_end=m.get("gear_end"), cls=m.get("cls"))
+                    gear_end=m.get("gear_end"), cls=m.get("cls"),
+                    dmg=did.get("dmg", 0), heal=did.get("heal", 0), taken=did.get("taken", 0))
     out = [one(n, info.get(n, {})) for n in r.get("party", [])]
     out += [one(n, m) for n, m in info.items() if n not in r.get("party", [])]
     return out[:5]
@@ -304,6 +306,14 @@ class InstanceTracker:
         self.cur["map_place"] = mp
         self.cur["pending"] = True                   # the clock starts at the first kill
         self._fight = None
+
+    def note_tally(self, kind, name, amt):
+        """Damage done / healing done / damage taken by a party member (pets count for their owner: the group
+        tracker works that out), added up for the run you are in. Kept with the run as "tally"."""
+        cur = self.cur
+        if cur:
+            one = cur.setdefault("tally", {}).setdefault(name, {"dmg": 0, "heal": 0, "taken": 0})
+            one[kind] = one.get(kind, 0) + amt
 
     def _start_clock(self, t):
         """First kill: the run becomes real. It starts when that first fight began."""

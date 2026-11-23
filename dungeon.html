@@ -271,7 +271,19 @@ function renderGroup(d){
         <div class="bars"><div class="bar hp"><i style="width:${(hp ?? 0) * 100}%"></i><span>${hp != null ? Math.round(hp * 100) + "%" : "—"}</span></div>
           ${mp != null ? `<div class="bar mp"><i style="width:${mp * 100}%"></i></div>` : ""}</div>
         <span class="small">${agg ? '<span class="aggro">AGGRO</span>' : m.inc10 ? `<span style="color:#ff9a7a">-${fmt(m.inc10)}</span>` : m.dist != null && !m.in_range ? '<span style="color:#e9563f">far</span>' : ""}</span></div>`;
-    }).join("") + aggroLog(g);
+    }).join("") + runDamage(d) + aggroLog(g);
+}
+
+// damage per person for this run (pets count for their owner), biggest first; healing and damage taken beside it
+function runDamage(d) {
+  const rows = Object.values(d.roster || {}).filter(m => m.dmg || m.heal || m.taken).sort((a, b) => b.dmg - a.dmg);
+  const all = rows.reduce((n, m) => n + m.dmg, 0), top = rows.length ? rows[0].dmg : 0;
+  if (!all) return "";
+  return `<div class="dim small" style="margin:1vh 0 .4vh">Damage this run <span title="pets count for their owner; from the combat log, so it runs a little behind">· ${fmt(all)} in all</span></div>` +
+    rows.map(m => `<div class="mem" title="${esc(m.name)}: ${m.dmg} damage, ${m.heal} healing, ${m.taken} damage taken">
+      <span></span><span class="n" style="color:${CLASS[m.cls] || "#d8cfc0"}">${esc(m.name)}</span>
+      <div class="bars"><div class="bar" style="background:#2a2520"><i style="width:${top ? m.dmg / top * 100 : 0}%;background:#b8743a"></i><span>${fmt(m.dmg)} · ${Math.round(m.dmg / all * 100)}%</span></div></div>
+      <span class="small dim">${m.heal > m.dmg ? "+" + fmt(m.heal) : m.taken ? "-" + fmt(m.taken) : ""}</span></div>`).join("");
 }
 
 function aggroLog(g){

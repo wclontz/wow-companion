@@ -425,6 +425,7 @@ class Companion:
         self.grp = GroupTracker()
         from instance import InstanceTracker
         self.inst = InstanceTracker()
+        self.grp.on_tally = self.inst.note_tally         # damage per person for the dungeon run
         self.mob_moves = defaultdict(lambda: defaultdict(lambda: {"n": 0, "dmg": 0, "max": 0, "crits": 0,
                                                                   "kind": "", "absorbed": 0}))
         self.mob_heals = defaultdict(lambda: defaultdict(lambda: {"n": 0, "amt": 0, "casts": 0}))
@@ -2412,6 +2413,18 @@ class Tailer(threading.Thread):
             self._strip_events(d)
         except Exception as e:
             print("strip events:", repr(e), file=sys.stderr)
+        try:                                             # a border crossed on the ground: a zone exit for the maps
+            import exits
+            from worldmap import continent
+            w = getattr(self, "_exit_watch", None) or exits.Watch()
+            self._exit_watch = w
+            zone = beacon.zone_name(d) if d.get("map") else None
+            hit = w.feed(zone if zone and continent(zone) else None, d.get("continent"), d.get("pos"), time.time(),
+                         taxi=d.get("taxi"), instance=d.get("instance"))
+            if hit and PLACES is not None:
+                PLACES.add("exit", hit[0], hit[1], hit[2], hit[3])
+        except Exception as e:
+            print("zone exits:", repr(e), file=sys.stderr)
         return (d.get("texts") or {}).get("target")
 
     def _strip_events(self, d):
@@ -2606,7 +2619,11 @@ def places_on(frame):
                 seen.setdefault(r["name"], []).append((r["ns"], r["we"]))
     known = flights.on_map(frame, bb, continent, seen)
     drawn = {f["who"] for f in known}
-    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn)] + known
+    # zone exits (exits.py): the borders you have crossed, and a starter list of well-known passes
+    import exits
+    with PLACES.lock:
+        crossed = [(r["name"], r["ns"], r["we"]) for r in PLACES.rows if r["kind"] == "exit" and r["cont"] == continent(frame)]
+    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn) and p["kind"] != "exit"]         + known + exits.on_map(frame, bb, continent, crossed)
 
 
 def game_quest_spots():
