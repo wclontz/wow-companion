@@ -41,6 +41,25 @@ Using Claude? Open this folder in Claude and say "set this up": `SETUP_FOR_CLAUD
 `/instance`, `/map` (wheel, pinch or + − to zoom), and `/characters`: each of your characters' level, money,
 gear and kills over days and weeks (a line is saved to `character_log.jsonl` every few minutes while you play).
 
+## What you see
+
+- **HUD**: XP, pace and time to level, rested, money, your target, buffs, party health, the quest log, and a
+  small map around you. A header alert shows when a hostile player is in your fights.
+- **Map**: drawn from your own minimap as you walk, so it starts empty and fills in. Switch **Mapping** on at
+  the top of the page. Marked on it:
+  - flight points of both sides (yours brighter once you have used one), named when in view;
+  - zone exits: a starter list of well-known passes, replaced by the exact spot once you walk through one;
+  - dungeon (D) and raid (R) entrances, with their level range;
+  - quest places, when a quest has been looked up;
+  - your own marks (★): put a file `my_marks.json` next to `companion.py`, for example
+    `[{"zone": "Ashenvale", "x": 31.4, "y": 31.5, "label": "Heartswood"}]` (x, y as the game's map shows
+    them). It is read again whenever you save it.
+- **Dungeon**: the run's clock, bosses, deaths, a map of the instance built from your kills, and damage, healing
+  and damage taken per person for the run (pets count for their owner).
+- **Group**: who is in the party, their gear level once they have been in range out of combat, and who is
+  doing what.
+- **Characters**: level, money, gear and kills of each of your characters over days and weeks.
+
 ## One monitor? Use a tablet or phone
 
 The companion prints an address like `http://192.168.1.50:8765/hud` when it starts, and shows it at the top of
