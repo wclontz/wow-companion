@@ -551,7 +551,7 @@ class Grids:
                 return gid, [-wb - gr["w0"][0], -wa - gr["w0"][1]]
         return None, None
 
-    def step_exact(self, img, cont, wa, wb, zone, px, py, label, now, shot=None, track=None):
+    def step_exact(self, img, cont, wa, wb, zone, px, py, label, now, shot=None, track=None, zoom=None, indoors=None):
         """One reading with the position add-on: the spot is known exactly, so there is nothing to find, to
         follow or to lose - a boat, a hearth, a flight are just the next spot. A continent without a map
         gets one. zone / px, py = the zone map and your coords on it (for the pages and the remembered
@@ -590,6 +590,9 @@ class Grids:
             if pk >= 10 and math.hypot(dx, dy) < 0.4 * g.shape[0] and not (dx == 0 and dy == 0 and _dist(G, c["G"]) > 3):
                 shift = (dx * gs, dy * gs) if track else (int(dx), int(dy))
         self.lost = self.need = self.off = None
+        # zoom / indoors = the add-on's minimap zoom step (0 = all the way out) and its "under a roof" flag: see
+        # _views (a zoomed-in minimap can't be measured into a view)
+        c["zoom"], c["indoors"] = zoom, indoors
         return self._advance(c, gr, fid, G, g, shift, px, py, label, now, shot, dt, None, exact=True,
                              gs=gs if track else None)
 
@@ -735,6 +738,14 @@ class Grids:
                 dr[key] = dr.get(key, 0) + 1
                 dr.setdefault("last_k", [])
                 dr["last_k"] = (dr["last_k"] + [[round(ka or 0, 2), round(kb or 0, 2)]])[-12:]
+        if c.get("zoom"):
+            # the minimap is zoomed in (the add-on says by how many steps): its picture slides faster, and an
+            # outdoor minimap two to four steps in measures like the indoor view. The pages then showed the
+            # city / indoor level over a dimmed outdoor map while you stood in a field (2026-11-24). No picture
+            # is taken zoomed in, so nothing was drawn wrong; the view for the pages is the add-on's own
+            # indoors flag until the minimap is zoomed out again.
+            c["view"] = "in" if c.get("indoors") else "out"
+            return out
         # the view right now, for the status line and picture-based estimates (the last >= 20 yd)
         if len(win) >= 2:
             j = next((j for j in range(len(win) - 2, -1, -1) if _dist(win[j][2:4], win[-1][2:4]) >= after), None)

@@ -971,7 +971,8 @@ class MinimapMapper(threading.Thread):
                 quadmap.note_bounds(zone, [round(v, 2) for v in b["rect"]])    # its rectangle, before the log gives it
             mp = b["map_pos"] or (0.0, 0.0)
             return {"cont": b["continent"], "wa": b["pos"][0], "wb": b["pos"][1], "zone": zone if b["map_pos"] else None,
-                    "px": round(mp[0] * 100, 2), "py": round(mp[1] * 100, 2), "zoom": b["zoom"]}
+                    "px": round(mp[0] * 100, 2), "py": round(mp[1] * 100, 2), "zoom": b["zoom"],
+                    "indoors": b.get("indoors")}
         except Exception as e:
             self.dbg["beacon_error"] = str(e)
             return None
@@ -1037,7 +1038,7 @@ class MinimapMapper(threading.Thread):
             shot = None                                # the minimap is zoomed in: the path is kept, no pictures
         if ex:
             res = G.step_exact(rgba, ex["cont"], ex["wa"], ex["wb"], ex["zone"], x, y, self.label_now, now, shot=shot,
-                               track=track)
+                               track=track, zoom=ex["zoom"], indoors=ex.get("indoors"))
         else:
             res = G.step(rgba, x, y, self.label_now, now, shot=shot)
         if G.cur and prevG:                            # how fast along the path: a shot every second when fast

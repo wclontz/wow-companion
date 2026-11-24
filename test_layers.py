@@ -59,6 +59,16 @@ def main():
         ok &= check("indoor view but no indoor map yet: falls back", w.info_grid("T", [0, 5], None, "in")["floor"], 0)
     finally:
         shutil.rmtree(root, ignore_errors=True)
+    # a zoomed-in minimap (the add-on's zoom step is not 0) can't be measured into a view: an outdoor minimap a
+    # few steps in slides like the indoor one. The view for the pages is then the add-on's indoors flag.
+    import grids
+    g = grids.Grids(tempfile.mkdtemp(prefix="zoomview_"))
+    for zoom, indoors, before, want in ((3, False, "in", "out"), (2, True, "out", "in"), (0, False, "in", "in")):
+        c = {"zoom": zoom, "indoors": indoors, "view": before, "win": []}
+        got = g._views(c)
+        if got != [] or c["view"] != want:
+            print("zoomed-in view:", zoom, indoors, before, "->", c["view"], "wanted", want)
+            ok = False
     print("ALL PASS" if ok else "FAILED")
     return 0 if ok else 1
 
