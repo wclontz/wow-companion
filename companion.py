@@ -2574,7 +2574,11 @@ class Tailer(threading.Thread):
                         my_level = bs["level"] if bs else LOC.level
                         if my_level and self.comp.me_name:
                             inst.note_level(self.comp.me_name, my_level)
-                        pair = (self.comp.ocr_target, LOC.target_level)
+                        # (only without the add-on's party list, which has every member's level exactly: with the
+                        #  strip the target's level arrives at once and its name a page later, so for a moment the
+                        #  pair is the old target's name with the new target's level. A healer hopping between
+                        #  targets gave the tank's 25 to a level 22 priest, 2026-11-23)
+                        pair = (self.comp.ocr_target, LOC.target_level) if getattr(self.comp, "strip_party", None) is None else (None, None)
                         if pair[0] and pair[1] and pair == getattr(self, "_tl_prev", None):
                             inst.note_level(pair[0], pair[1])
                         self._tl_prev = pair
@@ -2601,6 +2605,39 @@ PLACES = None           # places.Places: vendors, trainers, flight masters, gath
 PLACES_KINDS = ("vendor", "repair", "trainer", "flight", "mail", "bank", "inn", "gather")
 
 
+MARKS_FILE = os.path.join(HERE, "my_marks.json")
+_MARKS = [None, []]                 # [the file's time, its rows]
+
+
+def my_marks(frame, bb, continent):
+    """Your own marks (my_marks.json, local: [{"zone", "x", "y", "label"}] in that zone's map coords), as places of
+    kind "mark" in the coords of the zone the map is drawn in. A mark in a zone whose edges are unknown is left
+    out; the pages name every mark and the HUD points at one that is out of view."""
+    try:
+        at = os.path.getmtime(MARKS_FILE)
+        if at != _MARKS[0]:
+            with open(MARKS_FILE, encoding="utf-8") as f:
+                rows = json.load(f)
+            _MARKS[:] = [at, [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []]
+    except (OSError, ValueError):
+        return []
+    fb, here, out = bb.get(frame), continent(frame), []
+    if not fb or not here or fb[0] == fb[1] or fb[2] == fb[3]:
+        return []
+    for r in _MARKS[1]:
+        try:
+            zb = bb.get(r["zone"])
+            if continent(r["zone"]) != here or not zb or zb[0] == zb[1] or zb[2] == zb[3]:
+                continue
+            ns, we = zb[0] - float(r["y"]) / 100 * (zb[0] - zb[1]), zb[2] - float(r["x"]) / 100 * (zb[2] - zb[3])
+            out.append({"kind": "mark", "label": str(r.get("label") or "mark")[:60], "used": True,
+                        "fx": round((fb[2] - we) / (fb[2] - fb[3]) * 100, 2),
+                        "fy": round((fb[0] - ns) / (fb[0] - fb[1]) * 100, 2)})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
 def places_on(frame):
     """The remembered places of the continent the map shows, in the coords of the zone it is drawn in."""
     if PLACES is None or not frame:
@@ -2623,7 +2660,7 @@ def places_on(frame):
     import exits
     with PLACES.lock:
         crossed = [(r["name"], r["ns"], r["we"]) for r in PLACES.rows if r["kind"] == "exit" and r["cont"] == continent(frame)]
-    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn) and p["kind"] != "exit"]         + known + exits.on_map(frame, bb, continent, crossed)
+    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn) and p["kind"] != "exit"]         + known + exits.on_map(frame, bb, continent, crossed) + my_marks(frame, bb, continent)
 
 
 def game_quest_spots():
