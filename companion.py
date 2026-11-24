@@ -2638,6 +2638,16 @@ def my_marks(frame, bb, continent):
     return out
 
 
+def instance_marks(frame, bb, continent):
+    """Every dungeon's and raid's entrance on the maps (entrances.py), from the dungeon list already looked up."""
+    try:
+        import entrances
+        return entrances.on_map(frame, bb, continent, COMP.inst.lookup.all())
+    except Exception as e:
+        print("instance entrances:", repr(e), file=sys.stderr)
+        return []
+
+
 def places_on(frame):
     """The remembered places of the continent the map shows, in the coords of the zone it is drawn in."""
     if PLACES is None or not frame:
@@ -2660,7 +2670,7 @@ def places_on(frame):
     import exits
     with PLACES.lock:
         crossed = [(r["name"], r["ns"], r["we"]) for r in PLACES.rows if r["kind"] == "exit" and r["cont"] == continent(frame)]
-    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn) and p["kind"] != "exit"]         + known + exits.on_map(frame, bb, continent, crossed) + my_marks(frame, bb, continent)
+    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn) and p["kind"] != "exit"]         + known + exits.on_map(frame, bb, continent, crossed) + my_marks(frame, bb, continent)         + instance_marks(frame, bb, continent)
 
 
 def game_quest_spots():
