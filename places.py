@@ -13,8 +13,8 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FILE = os.path.join(HERE, "places.json")
-KINDS = ("vendor", "repair", "trainer", "flight", "mail", "bank", "inn", "gather", "exit")
-SAME = {"gather": 12.0, "exit": 150.0}   # yd: the same kind (and name) this close is the same place (others: 25)
+KINDS = ("vendor", "repair", "trainer", "flight", "mail", "bank", "inn", "gather", "exit", "entrance")
+SAME = {"gather": 12.0, "exit": 150.0, "entrance": 60.0}   # yd: the same kind (and name) this close is the same place (others: 25)
 MOST = 4000
 
 

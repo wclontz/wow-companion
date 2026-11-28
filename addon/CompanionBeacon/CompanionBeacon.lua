@@ -3,6 +3,11 @@
 -- the other things it does: switch the combat and chat logs on at login (owner's choice, 2026-11-18), and
 -- inspect your party members one at a time, out of combat and in range, for their gear (2026-11-19).
 -- And only if you type /cbeacon rings: hide the quest-area rings on the minimap (owner's choice, 2026-11-21).
+-- It also writes two numbers under your level on the player frame: a warlock's soul shards and your empty
+-- bag slots (owner's choice, 2026-11-25; /cbeacon carry hides or shows them), and since 2026-11-28 how much
+-- your gear has left.
+-- And it keeps the game's list of the quests you have finished in its saved file (CompanionBeaconDB.quests_done,
+-- written by the game at logout and /reload), which the companion reads from there (owner's choice, 2026-11-26).
 --
 -- The strip is ROWS rows of CELLS squares of CELL x CELL real screen pixels. Each square carries 6 bits:
 -- red, green and blue each at one of 4 levels (0, 1/3, 2/3, 1). Keep this layout in step with beacon.py.
@@ -60,7 +65,12 @@
 --                      (an objective starts with + when it is finished, - when not)
 --            row 7 (version 8):  55 your buffs, 56 your debuffs: a line each, name <tab> when it ends (the PC
 --                      clock's seconds, 0 = it does not run out) <tab> stacks
---                      57 spells on your bars that are cooling down: name <tab> when ready (PC clock's seconds)
+--                      57 what is cooling down: name <tab> when ready (PC clock's seconds) <tab> where:
+--                      b3 = button 3 of the main bar, a61 = action slot 61 (another bar), p4 = the pet's bar,
+--                      e13 = something you wear (13, 14 the trinkets), i = something you carry. Its first line
+--                      is "#bar <tab> 0 <tab> 12 x 1/0 (main-bar button holds something / is empty, - not known)
+--                      <tab> h (the game kept part secret) or - <tab> the action slot before button 1 (0 on
+--                      page 1, 12 on page 2: another number = another set of buttons is showing)"
 --                      58 what you carry of food, drink, potions, reagents, ammunition and soul shards:
 --                      name <tab> how many <tab> item class.subclass
 --            row 8 (version 8):  59 the last 6 things that happened: number <tab> kind <tab> who / what
@@ -70,6 +80,8 @@
 --                      61 s <tab> skill <tab> rank <tab> most, and t <tab> talent tree <tab> points
 --                      62 reputations: name <tab> standing (1-8) <tab> points into it <tab> points it takes
 --                      63 rings <tab> 1 shown / 0 hidden by /cbeacon rings / x the game has no such switch
+--                         wear <tab> percent your gear has left, all pieces together
+--                         repair <tab> copper a repair of everything would cost (before a merchant's discount)
 --   2      counter, changes when that text changes
 --   3      the text's length in bytes, low 6 bits (square 45 has the rest; cut at 1200)
 --   4      page number (the page starts at 20 x this)
@@ -454,6 +466,36 @@ local function quests()
     end
 end
 
+-- What a repair of everything would cost, in copper: the price the game writes on each worn piece's tooltip
+-- (before any discount a merchant gives). Read from the tooltip's data, or from a hidden tooltip of our own.
+local repair_tip
+local function repair_cost()
+    local total, got = 0, false
+    for slot = 1, 19 do
+        local cost
+        if C_TooltipInfo and C_TooltipInfo.GetInventoryItem then
+            local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slot)
+            if ok and type(data) == "table" then cost = data.repairCost end
+        end
+        if issecretvalue and issecretvalue(cost) then cost = nil end
+        if type(cost) ~= "number" and repair_tip ~= false then
+            if not repair_tip then
+                local ok, tip = pcall(CreateFrame, "GameTooltip", "CompanionBeaconTip", nil, "GameTooltipTemplate")
+                repair_tip = ok and tip or false
+            end
+            if repair_tip then
+                pcall(repair_tip.SetOwner, repair_tip, WorldFrame, "ANCHOR_NONE")
+                local ok, _, _, c = pcall(repair_tip.SetInventoryItem, repair_tip, "player", slot)
+                cost = ok and c or nil
+                if issecretvalue and issecretvalue(cost) then cost = nil end
+                pcall(repair_tip.Hide, repair_tip)
+            end
+        end
+        if type(cost) == "number" then total, got = total + cost, true end
+    end
+    return got and floor(total + 0.5) or nil
+end
+
 local function purse()
     slow.money = num(GetMoney)
     local free_fn = (C_Container and C_Container.GetContainerNumFreeSlots) or GetContainerNumFreeSlots
@@ -466,17 +508,27 @@ local function purse()
         end
         slow.bag_free, slow.bag_all = free, all > 0 and all or nil
     end
-    local worst
+    local worst, left, whole = nil, 0, 0
     if GetInventoryItemDurability then
         for slot = 1, 19 do
             local ok, cur, top = pcall(GetInventoryItemDurability, slot)
             if ok and not (issecretvalue and (issecretvalue(cur) or issecretvalue(top))) and cur and top and top > 0 then
                 local w = floor(cur / top * 1000 + 0.5)
                 if not worst or w < worst then worst = w end
+                left, whole = left + cur, whole + top
             end
         end
     end
     slow.wear = worst
+    slow.wear_all = whole > 0 and floor(left / whole * 100 + 0.5) or nil     -- all your gear together, percent left
+    if whole <= 0 then
+        slow.repair, slow.repair_at = nil, nil
+    elseif left >= whole then
+        slow.repair, slow.repair_at = 0, left
+    elseif slow.repair_at ~= left then                   -- (asked again only when something wore or was mended)
+        local ok, cost = pcall(repair_cost)
+        slow.repair, slow.repair_at = ok and cost or nil, left
+    end
 end
 
 -- ---- gear: yours every second; a party member's when the game answers an inspect (see "asking")
@@ -642,31 +694,131 @@ local function spell_name(id)
     return s
 end
 
+local function item_name(id)
+    return text((C_Item and C_Item.GetItemNameByID) or GetItemInfo, id)
+end
+
+-- One cooldown from whatever this game's function gives (two numbers, or a table with startTime and duration)
+-- -> start, duration as plain numbers; nil when there is none; nil, nil, true when the game keeps it secret.
+local function cd_of(fn, ...)
+    if not fn then return nil end
+    local ok, a, b = pcall(fn, ...)
+    if not ok then return nil end
+    if secret(a) or secret(b) then return nil, nil, true end
+    if type(a) == "table" then
+        local s, d, hid
+        local ok2 = pcall(function()
+            if secret(a.startTime) or secret(a.duration) then hid = true else s, d = a.startTime, a.duration end
+        end)
+        if hid or not ok2 then return nil, nil, true end
+        a, b = s, d
+    end
+    if type(a) == "number" and type(b) == "number" then return a, b end
+    return nil
+end
+
+local function action_name(slot)                            -- what is on an action slot: a spell, an item, a macro
+    local ok, kind, id = pcall(GetActionInfo, slot)
+    if not ok then return "", nil end
+    kind, id = plain(kind), plain(id)
+    if kind == "spell" and type(id) == "number" then return spell_name(id), kind, id end
+    if kind == "item" and type(id) == "number" then return item_name(id), kind, id end
+    if kind == "macro" then
+        local sid = type(id) == "number" and GetMacroSpell and num(GetMacroSpell, id)
+        local s = sid and spell_name(sid) or ""
+        if s == "" then s = text(GetActionText, slot) end   -- (the macro's own name)
+        return s, kind, id
+    end
+    return "", kind
+end
+
+-- Everything of yours that is cooling down: the buttons of the main bar first (so the companion can say which
+-- button), then the other bars, the pet's bar, what you wear (trinkets) and what you carry (potions, the
+-- hearthstone). The same name is sent once. The first line says which main-bar buttons hold something.
 local function cooldowns()
-    local out, had, now = {}, {}, GetTime()
-    if not GetActionInfo then return end
-    for slot = 1, 120 do
-        local ok, kind, id = pcall(GetActionInfo, slot)
-        if ok and plain(kind) == "spell" and type(plain(id)) == "number" then
-            local start, dur
-            if C_Spell and C_Spell.GetSpellCooldown then
-                local ok2, cd = pcall(C_Spell.GetSpellCooldown, id)
-                if ok2 and cd and not secret(cd) then
-                    pcall(function() start, dur = plain(cd.startTime), plain(cd.duration) end)
-                end
-            elseif GetSpellCooldown then
-                local ok2, s, d = pcall(GetSpellCooldown, id)
-                if ok2 then start, dur = plain(s), plain(d) end
+    local out, had, now, hidden = {}, {}, GetTime(), false
+    local function add(name, where, start, dur, hid)
+        if hid then hidden = true return end
+        if type(start) ~= "number" or type(dur) ~= "number" or dur <= 2 or start <= 0 then return end   -- (2 s: not the global one)
+        local left = start + dur - now
+        if left <= 0 or left > 86400 * 30 then return end
+        name = clean(name)
+        if name == "" or had[name] or #out >= 30 then return end
+        had[name] = true
+        out[#out + 1] = name .. "\t" .. ends_at("cd" .. name, left) .. "\t" .. where
+    end
+
+    local mask, first = "-", 0
+    if GetActionInfo then
+        local action_cd = (C_ActionBar and C_ActionBar.GetActionCooldown) or GetActionCooldown
+        local function slot_cd(slot, name, kind, id)
+            local s, d, hid = cd_of(action_cd, slot)
+            if not s and not hid and kind == "spell" then   -- (no action function here: ask about the spell)
+                s, d, hid = cd_of((C_Spell and C_Spell.GetSpellCooldown) or GetSpellCooldown, id)
             end
-            if type(start) == "number" and type(dur) == "number" and dur > 2 then     -- (2 s: not the global one)
-                local name = spell_name(id)
-                if name ~= "" and not had[name] and #out < 30 then
-                    had[name] = true
-                    out[#out + 1] = clean(name) .. "\t" .. ends_at("cd" .. name, start + dur - now)
+            return s, d, hid
+        end
+        local page = (GetActionBarPage and num(GetActionBarPage)) or 1
+        local bonus = (GetBonusBarOffset and num(GetBonusBarOffset)) or 0
+        local base = (page - 1) * 12
+        if page == 1 and bonus > 0 then base = (5 + bonus) * 12 end     -- (a stance's or form's own bar)
+        local m = {}
+        for i = 1, 12 do
+            local slot = base + i
+            local name, kind, id = action_name(slot)
+            local holds = kind ~= nil
+            if HasAction then holds = yes(HasAction, slot) end
+            m[i] = holds and "1" or "0"
+            if holds then add(name, "b" .. i, slot_cd(slot, name, kind, id)) end
+        end
+        mask, first = table.concat(m), base
+        for slot = 1, 120 do
+            if slot <= base or slot > base + 12 then
+                local name, kind, id = action_name(slot)
+                if name ~= "" and not had[clean(name)] then add(name, "a" .. slot, slot_cd(slot, name, kind, id)) end
+            end
+        end
+    end
+
+    if GetPetActionInfo and GetPetActionCooldown then
+        for i = 1, 10 do
+            local ok, name = pcall(GetPetActionInfo, i)
+            name = ok and plain(name) or nil
+            if type(name) == "string" and name ~= "" then
+                local shown_as = _G and _G[name]             -- (the pet's own orders are sent as a token)
+                if type(shown_as) == "string" then name = shown_as end
+                add(name, "p" .. i, cd_of(GetPetActionCooldown, i))
+            end
+        end
+    end
+
+    if GetInventoryItemCooldown and GetInventoryItemID then
+        for slot = 1, 19 do
+            local id = num(GetInventoryItemID, "player", slot)
+            if id then
+                local s, d, hid = cd_of(GetInventoryItemCooldown, "player", slot)
+                if hid or (s and d > 2) then add(item_name(id), "e" .. slot, s, d, hid) end
+            end
+        end
+    end
+
+    local slots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+    local bag_cd = (C_Container and C_Container.GetContainerItemCooldown) or GetContainerItemCooldown
+    local bag_id = (C_Container and C_Container.GetContainerItemID) or GetContainerItemID
+    if slots and bag_cd and bag_id then
+        for bag = 0, 4 do
+            for slot = 1, (num(slots, bag) or 0) do
+                local s, d, hid = cd_of(bag_cd, bag, slot)
+                if hid or (s and d > 2) then
+                    local id = num(bag_id, bag, slot)
+                    if id then add(item_name(id), "i", s, d, hid) end
                 end
             end
         end
     end
+
+    -- (h: the game kept part of it secret, so a button missing from the list may still be cooling down)
+    table.insert(out, 1, "#bar\t0\t" .. mask .. "\t" .. (hidden and "h" or "-") .. "\t" .. first)
     say(57, table.concat(out, "\n"))
 end
 
@@ -817,6 +969,14 @@ end
 -- until you ask.
 local RING_FNS = { "SetQuestBlobRingAlpha", "SetQuestBlobInsideAlpha", "SetQuestBlobOutsideAlpha",
                    "SetTaskBlobRingAlpha", "SetTaskBlobInsideAlpha", "SetTaskBlobOutsideAlpha" }
+local ring_state
+local function options()                                 -- text 63: a line a thing, name <tab> value
+    local rows = {}
+    if ring_state then rows[#rows + 1] = "rings\t" .. ring_state end
+    if slow.wear_all then rows[#rows + 1] = "wear\t" .. slow.wear_all end
+    if slow.repair then rows[#rows + 1] = "repair\t" .. slow.repair end
+    say(63, table.concat(rows, "\n"))
+end
 local function rings()
     local hide = type(CompanionBeaconDB) == "table" and CompanionBeaconDB.hide_rings
     local can = false
@@ -826,16 +986,166 @@ local function rings()
             if hide then pcall(Minimap[fn], Minimap, 0) end
         end
     end
-    say(63, "rings\t" .. ((not can and "x") or (hide and "0") or "1"))
+    ring_state = (not can and "x") or (hide and "0") or "1"
+    options()
     return can
+end
+
+-- Under the level on the player frame: soul shards (a warlock only) and empty bag slots, and under those how much
+-- your gear has left, all pieces together (red and flashing under WEAR_LOW %, or when one piece is nearly broken:
+-- WEAR_PIECE thousandths) and what the repair would cost. Our own text on our
+-- own frame; the game's frames are only used to hang it on, and nothing of theirs is changed.
+-- The shards are a text of their own (a warlock only), so that each number can flash by itself.
+-- Each flashes when fewer than its LOW are left.
+local function coins(c)                                  -- 12345 copper -> "1g 23s"; under a gold "23s 45c"
+    local g, s, k = floor(c / 10000), floor(c / 100) % 100, c % 100
+    if g > 0 then return g .. "g " .. s .. "s" end
+    if s > 0 then return s .. "s " .. k .. "c" end
+    return k .. "c"
+end
+local SHARDS_LOW, BAGS_LOW, CARRY_SIZE, WEAR_LOW, WEAR_PIECE = 3, 3, 14, 20, 100
+local carry_fs, shard_fs, wear_fs, carry_holder, carry_at, shard_low, bag_low, wear_low
+local function carry_text()
+    local fs = carry_holder:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    pcall(function()
+        local font, _, flags = fs:GetFont()
+        fs:SetFont(font, CARRY_SIZE, flags)
+    end)
+    return fs
+end
+local function carry_label()
+    local off = type(CompanionBeaconDB) == "table" and CompanionBeaconDB.hide_carry
+    if not carry_fs then
+        if off or not UIParent then return end
+        carry_at = PlayerLevelText or PlayerFrame
+        if not carry_at then return end
+        carry_holder = CreateFrame("Frame", "CompanionBeaconCarry", UIParent)
+        carry_holder:SetSize(1, 1)
+        carry_holder:SetFrameStrata("MEDIUM")
+        carry_fs = carry_text()
+        wear_fs = carry_text()
+        if carry_at == PlayerLevelText then
+            wear_fs:SetPoint("TOP", carry_at, "BOTTOM", 0, -28)
+        else
+            wear_fs:SetPoint("TOPLEFT", carry_at, "BOTTOMLEFT", 20, -16)
+        end
+        carry_holder:SetScript("OnUpdate", function()
+            local dim = GetTime() % 0.8 >= 0.4
+            carry_fs:SetAlpha((bag_low and dim) and 0.2 or 1)
+            wear_fs:SetAlpha((wear_low and dim) and 0.2 or 1)
+            if shard_fs then shard_fs:SetAlpha((shard_low and dim) and 0.2 or 1) end
+        end)
+        if carry_at == PlayerLevelText then
+            carry_fs:SetPoint("TOP", carry_at, "BOTTOM", 0, -8)
+        else
+            carry_fs:SetPoint("TOPLEFT", carry_at, "BOTTOMLEFT", 20, 4)
+        end
+    end
+    if off then
+        carry_fs:SetText("")
+        wear_fs:SetText("")
+        if shard_fs then shard_fs:SetText("") end
+        shard_low, bag_low, wear_low = false, false, false
+        return
+    end
+    local ok, _, cls = pcall(UnitClass, "player")
+    if ok and plain(cls) == "WARLOCK" then
+        if not shard_fs then                             -- shards left of the middle, bag slots right of it
+            shard_fs = carry_text()
+            carry_fs:ClearAllPoints()
+            if carry_at == PlayerLevelText then
+                shard_fs:SetPoint("TOPRIGHT", carry_at, "BOTTOM", -4, -8)
+                carry_fs:SetPoint("TOPLEFT", carry_at, "BOTTOM", 4, -8)
+            else
+                shard_fs:SetPoint("TOPLEFT", carry_at, "BOTTOMLEFT", 20, 4)
+                carry_fs:SetPoint("LEFT", shard_fs, "RIGHT", 6, 0)
+            end
+        end
+        local n = num((C_Item and C_Item.GetItemCount) or GetItemCount, 6265)
+        shard_low = n ~= nil and n < SHARDS_LOW
+        shard_fs:SetText(n and ("|TInterface\\Icons\\INV_Misc_Gem_Amethyst_02:17|t |cff" ..
+            (n <= 1 and "ffb84a" or "c9a0ff") .. n .. "|r") or "")
+    end
+    local free = slow.bag_free
+    bag_low = free ~= nil and slow.bag_all ~= nil and free < BAGS_LOW
+    if free and slow.bag_all then
+        carry_fs:SetText("|TInterface\\Icons\\INV_Misc_Bag_08:17|t |cff" ..
+            ((free <= 2 and "ff6b5a") or (free <= 5 and "ffb84a") or "ffffff") .. free .. "|r")
+    else
+        carry_fs:SetText("")
+    end
+    options()
+    local all, worst = slow.wear_all, slow.wear
+    wear_low = all ~= nil and (all < WEAR_LOW or (worst ~= nil and worst <= WEAR_PIECE))
+    wear_fs:SetText(all and ("|TInterface\\Icons\\Trade_BlackSmithing:17|t |cff" ..
+        ((wear_low and "ff6b5a") or (all <= 40 and "ffb84a") or "ffffff") .. all .. "%|r" ..
+        ((slow.repair and slow.repair > 0) and ("  |cffffd24a" .. coins(slow.repair) .. "|r") or "")) or "")
+end
+
+-- The game's own list of finished quests -> CompanionBeaconDB.quests_done[your name]["<quest id>"] = the quest's
+-- name, or true until the game can name it. Far too long for the strip, so it goes into the saved file, which
+-- the game writes at logout and /reload. The list is asked for once, then again 20 minutes after every pass;
+-- names are asked for 25 a call (the game fetches a name it does not have, so a later pass finds it).
+local qd_ids, qd_at, qd_wait = nil, 1, 0
+local function quests_done_save()
+    if type(CompanionBeaconDB) ~= "table" or (GetTime and GetTime() < qd_wait) then return end
+    local who = text(UnitName, "player")
+    if who == "" then return end
+    if type(CompanionBeaconDB.quests_done) ~= "table" then CompanionBeaconDB.quests_done = {} end
+    if not qd_ids then
+        local ok, list
+        if C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs then
+            ok, list = pcall(C_QuestLog.GetAllCompletedQuestIDs)
+        end
+        if not (ok and type(plain(list)) == "table" and next(list)) and GetQuestsCompleted then
+            ok, list = pcall(GetQuestsCompleted)
+        end
+        if not ok or type(plain(list)) ~= "table" then
+            qd_wait = (GetTime and GetTime() or 0) + 1200
+            return
+        end
+        local old, new, ids = CompanionBeaconDB.quests_done[who], {}, {}
+        for k, v in pairs(list) do                          -- (a list of ids, or id -> true: both are known shapes)
+            local id = plain(v) == true and plain(k) or plain(v)
+            if type(id) == "number" and id > 0 and #ids < 5000 then
+                local key = tostring(floor(id))
+                ids[#ids + 1] = key
+                new[key] = (type(old) == "table" and type(old[key]) == "string" and old[key]) or true
+            end
+        end
+        CompanionBeaconDB.quests_done[who] = new
+        qd_ids, qd_at = ids, 1
+    end
+    local mine, n = CompanionBeaconDB.quests_done[who], 0
+    if type(mine) ~= "table" then qd_ids = nil return end
+    while qd_at <= #qd_ids and n < 25 do
+        local key = qd_ids[qd_at]
+        if mine[key] == true then
+            n = n + 1
+            local title = ""
+            if C_QuestLog and C_QuestLog.GetTitleForQuestID then
+                title = text(C_QuestLog.GetTitleForQuestID, tonumber(key))
+            end
+            if title == "" and C_QuestLog and C_QuestLog.GetQuestInfo then
+                title = text(C_QuestLog.GetQuestInfo, tonumber(key))
+            end
+            title = clean(title)
+            if title ~= "" then mine[key] = title:sub(1, 120) end
+        end
+        qd_at = qd_at + 1
+    end
+    if qd_at > #qd_ids then                                 -- a pass is done: the list is asked for afresh later
+        qd_ids, qd_wait = nil, (GetTime and GetTime() or 0) + 1200
+    end
 end
 
 local surveys = 0
 local function survey()
     local e
     surveys = surveys + 1
-    local todo = { party, quests, purse, gear, minimap_spot, auras, cooldowns, quest_spots }
+    local todo = { party, quests, purse, carry_label, gear, minimap_spot, auras, cooldowns, quest_spots }
     if surveys % 5 == 1 then todo[#todo + 1] = supplies end
+    if surveys % 5 == 3 then todo[#todo + 1] = quests_done_save end
     if surveys % 10 == 2 then
         todo[#todo + 1] = skills
         todo[#todo + 1] = reputation
@@ -1044,6 +1354,14 @@ SlashCmdList["COMPANIONBEACON"] = function(msg)
         else
             print("|cffff8800Companion Beacon:|r quest-area rings will be back after /reload")
         end
+        return
+    end
+    if type(msg) == "string" and msg:lower():match("^%s*carry%s*$") then
+        if type(CompanionBeaconDB) ~= "table" then CompanionBeaconDB = {} end
+        CompanionBeaconDB.hide_carry = not CompanionBeaconDB.hide_carry
+        pcall(carry_label)
+        print("|cffff8800Companion Beacon:|r soul shards and empty bag slots under your level " ..
+            (CompanionBeaconDB.hide_carry and "hidden" or "shown"))
         return
     end
     if f:IsShown() then f:Hide() else f:Show() end

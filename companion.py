@@ -215,12 +215,47 @@ def strip_more():
     return {"buffs": beacon.timed(d, "buffs") if "buffs" in tx else None,
             "debuffs": beacon.timed(d, "debuffs") if "debuffs" in tx else None,
             "cooldowns": beacon.timed(d, "cooldowns") if "cooldowns" in tx else None,
+            "bar": beacon.bar(d),
             "supplies": beacon.supplies(d) if "supplies" in tx else None,
             "party_hp": [{"name": m["name"], "hp": None if i >= len(ph) or ph[i] is None else round(ph[i] * 100)}
                          for i, m in enumerate(pl)],
             "skills": beacon.skills(d) if "skills" in tx else None,
             "reputation": beacon.reputation(d) if "reputation" in tx else None,
-            "rings": {"1": "shown", "0": "hidden"}.get(opts.get("rings"))}
+            "rings": {"1": "shown", "0": "hidden"}.get(opts.get("rings")),
+            "wear_all": _opt_int(opts, "wear", 3), "repair": _opt_int(opts, "repair", 9)}
+
+
+def _opt_int(opts, key, digits):
+    """A whole number from the add-on's options text, or None (the text is the strip's: checked, not trusted)."""
+    v = opts.get(key) or ""
+    return int(v) if v.isdigit() and len(v) <= digits else None
+
+
+def buttons_checked(buttons, more):
+    """The screen reader's action buttons, put right by the add-on where it knows better (a copy; the screen's
+    own list is left alone). The screen only sees a dark button: the add-on knows whether the button holds
+    anything ("empty"), what is cooling down on it and for how long ("cooldown" + "name", "left" seconds), and so
+    that a dark button it does not list is just not usable now ("unusable": no target, no reagent, too far).
+    Unchanged without an add-on that says which button is which."""
+    bar = (more or {}).get("bar")
+    if not buttons or not bar or more.get("cooldowns") is None:
+        return buttons
+    has = bar.get("has") or []
+    cds = {c["at"]: c for c in more["cooldowns"] if c.get("at")}
+    out = []
+    for b in buttons:
+        b, i = dict(b), b.get("slot") or 0
+        cd = cds.get(f"b{i}")
+        if 0 < i <= len(has) and not has[i - 1]:
+            b["state"] = "empty"
+        elif cd:
+            b.update(state="cooldown", name=cd["name"], left=cd["left"])
+        elif b.get("state") == "empty" and 0 < i <= len(has):
+            b["state"] = "ready"                         # (a very dark icon: the screen took it for no icon)
+        elif b.get("state") == "cooldown" and bar.get("whole"):
+            b["state"] = "unusable"
+        out.append(b)
+    return out
 
 
 MONEY_SEEN = {}         # character -> (time, copper) at its first strip reading since the companion started
@@ -2043,6 +2078,9 @@ class Companion:
 
 # ---------------------------------------------------------------- file tailing
 
+QUESTS_SETTLE = 4.0     # s the add-on's quest list must stay the same before a change in it is believed
+
+
 class Tailer(threading.Thread):
     def __init__(self, comp):
         super().__init__(daemon=True)
@@ -2094,6 +2132,11 @@ class Tailer(threading.Thread):
             if lines:
                 with self.comp.lock:
                     for ln in lines:
+                        if QDONE is not None and ln.rstrip().endswith("completed."):
+                            try:                         # a finished quest: kept for good (questsdone.py)
+                                QDONE.feed(ln)
+                            except Exception as e:
+                                print("quests done:", repr(e), file=sys.stderr)
                         t = parse_ts(ln)
                         if t is not None and t < cutoff:
                             continue
@@ -2382,6 +2425,11 @@ class Tailer(threading.Thread):
         except Exception as e:
             print("strip feed error:", repr(e), file=sys.stderr)
             return None
+        try:                                             # other buttons on the bar: the screen reader starts afresh
+            if SCREEN is not None:
+                SCREEN.bar_is((beacon.bar(d) or {}).get("set"))
+        except Exception as e:
+            print("bar set:", repr(e), file=sys.stderr)
         name = ((d.get("texts") or {}).get("name") or "").strip()
         if name:                                         # the add-on names your character at once (the log only
             self.comp.follow_strip(name)                 # at its first fight): a switch of characters shows now
@@ -2392,6 +2440,14 @@ class Tailer(threading.Thread):
             for m in pl or ():
                 if m["level"] and m["name"]:
                     self.comp.inst.note_level(m["name"], m["level"])
+        # The quest texts arrive one at a time: while the log reorders, a reading holds some quests twice and
+        # others not at all. A changed list is only believed once it has stayed the same for QUESTS_SETTLE s.
+        if ql is not None and ql != getattr(self, "_ql_last", None):
+            self._ql_last, self._ql_t = ql, time.time()
+        if ql is not None and QUESTS is not None and ql != QUESTS.quests and (
+                time.time() - getattr(self, "_ql_t", 0) < QUESTS_SETTLE
+                or len({(q["level"], q["title"]) for q in ql}) < len(ql)):
+            ql = None
         if ql is not None and QUESTS is not None and not QUESTS.busy:
             old, new = [q["title"] for q in QUESTS.quests], [q["title"] for q in ql]
             if ql != QUESTS.quests:
@@ -2425,6 +2481,17 @@ class Tailer(threading.Thread):
                 PLACES.add("exit", hit[0], hit[1], hit[2], hit[3])
         except Exception as e:
             print("zone exits:", repr(e), file=sys.stderr)
+        try:                                             # walked into an instance: where you stood is its entrance
+            import entrances
+            w = getattr(self, "_entr_watch", None) or entrances.Watch()
+            self._entr_watch = w
+            hit = w.feed(d.get("inst"), d.get("continent"), d.get("pos"), time.time(),
+                         taxi=d.get("taxi"), instance=d.get("instance"))
+            dg = self.comp.inst.lookup.for_map(hit[0]) if hit else None
+            if dg and PLACES is not None:
+                PLACES.add("entrance", entrances.name_of(dg), hit[1], hit[2], hit[3])
+        except Exception as e:
+            print("instance entrance:", repr(e), file=sys.stderr)
         return (d.get("texts") or {}).get("target")
 
     def _strip_events(self, d):
@@ -2642,7 +2709,13 @@ def instance_marks(frame, bb, continent):
     """Every dungeon's and raid's entrance on the maps (entrances.py), from the dungeon list already looked up."""
     try:
         import entrances
-        return entrances.on_map(frame, bb, continent, COMP.inst.lookup.all())
+        own = {}                                         # your own walks in (places.json), for the ones without
+        if PLACES is not None:
+            with PLACES.lock:
+                for r in PLACES.rows:
+                    if r["kind"] == "entrance" and r["cont"] == continent(frame):
+                        own.setdefault(r["name"], []).append((r["ns"], r["we"], r.get("n", 1), r.get("t", 0)))
+        return entrances.on_map(frame, bb, continent, COMP.inst.lookup.all(), own)
     except Exception as e:
         print("instance entrances:", repr(e), file=sys.stderr)
         return []
@@ -2670,7 +2743,7 @@ def places_on(frame):
     import exits
     with PLACES.lock:
         crossed = [(r["name"], r["ns"], r["we"]) for r in PLACES.rows if r["kind"] == "exit" and r["cont"] == continent(frame)]
-    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn) and p["kind"] != "exit"]         + known + exits.on_map(frame, bb, continent, crossed) + my_marks(frame, bb, continent)         + instance_marks(frame, bb, continent)
+    return [p for p in mine if not (p["kind"] == "flight" and p["label"] in drawn) and p["kind"] not in ("exit", "entrance")]         + known + exits.on_map(frame, bb, continent, crossed) + my_marks(frame, bb, continent)         + instance_marks(frame, bb, continent)
 
 
 def game_quest_spots():
@@ -2701,7 +2774,22 @@ def load_markers():
 
 
 CHARLOG = None
+QDONE = None            # questsdone.Done: every quest finished, from the chat log's "<quest> completed."
+
+
+def quests_done():
+    """What /api/quests_done sends: the finished quests by character, with the game's own list beside them."""
+    if QDONE is None:
+        return {"chars": [], "total": 0, "error": "not started"}
+    import questsdone
+    try:
+        game = questsdone.game_list(questsdone.saved_files(wowpath.flavor_dir()))
+    except Exception as e:
+        print("the game's quest list:", repr(e), file=sys.stderr)
+        game = {}
+    return QDONE.snapshot(game)
 _CHAR_WAIT = {}                     # character -> since when its reading has been incomplete
+_CHAR_SAME = [None]          # (name, level, XP the level needs) of the last look: see char_reading
 
 
 def char_reading():
@@ -2713,6 +2801,12 @@ def char_reading():
     st = d.get("stats") if d else None
     name = ((d or {}).get("texts") or {}).get("name")
     if not st or not name or not st.get("level"):
+        return None
+    # the name is a text and the level a number: after a switch of characters they arrive apart, so for a moment
+    # the old name stands over the new character's numbers. A reading counts once two in a row agree who it is.
+    who = (name, st["level"], st.get("xpmax"))
+    same, _CHAR_SAME[0] = _CHAR_SAME[0] == who, who
+    if not same:
         return None
     g = (beacon.gear(d) or {}).get("me") or {}
     rec = {"name": name, "level": st["level"], "xp": st.get("xp"), "xpmax": st.get("xpmax"), "money": st.get("money"),
@@ -2807,7 +2901,8 @@ class Handler(BaseHTTPRequestHandler):
                 "/instance": "instance.html", "/instance.html": "instance.html",
                 "/dungeon": "dungeon.html", "/dungeon.html": "dungeon.html",
                 "/map": "map.html", "/map.html": "map.html",
-                "/characters": "characters.html", "/characters.html": "characters.html"}.get(self.path.split("?")[0])
+                "/characters": "characters.html", "/characters.html": "characters.html",
+                "/done": "questsdone.html", "/questsdone.html": "questsdone.html"}.get(self.path.split("?")[0])
         if page:
             with open(os.path.join(HERE, page), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -2816,6 +2911,8 @@ class Handler(BaseHTTPRequestHandler):
             q = parse_qs(urlparse(self.path).query)
             data = COMP.dungeon_snapshot((q.get("guide") or [None])[0])
             self._send(200, json.dumps(data, default=list).encode(), "application/json")
+        elif self.path.startswith("/api/quests_done"):             # every quest finished (questsdone.py)
+            self._send(200, json.dumps(quests_done()).encode(), "application/json")
         elif self.path.startswith("/api/characters"):              # each character's progress over time (charlog.py)
             data = CHARLOG.snapshot() if CHARLOG else {"chars": [], "error": "not started"}
             self._send(200, json.dumps(data).encode(), "application/json")
@@ -2890,6 +2987,8 @@ class Handler(BaseHTTPRequestHandler):
             snap = COMP.snapshot()
             snap["quests"] = QUESTS.quests if QUESTS else []
             snap["strip"] = strip_summary()
+            if snap.get("screen") and snap["screen"].get("buttons"):
+                snap["screen"]["buttons"] = buttons_checked(snap["screen"]["buttons"], (snap["strip"] or {}).get("more"))
             snap["gdi"] = gdi_handles()
             snap["lan"] = lan_urls()
             snap["run_dbg"] = getattr(COMP, "run_dbg", None)     # the last look at "is this a dungeon run?"
@@ -3174,7 +3273,7 @@ def main():
             print('  {"wow_dir": "D:/Games/World of Warcraft"}')
             sys.exit(1)
         os.makedirs(LOG_DIR, exist_ok=True)      # a game that has never logged: the folder comes with its first log
-    global SCREEN, QUESTS, ASKER, NAMER, LOC, MOBS, BUFFS, PARTY_NAMES, MAPPER, CHARLOG, PLACES
+    global SCREEN, QUESTS, ASKER, NAMER, LOC, MOBS, BUFFS, PARTY_NAMES, MAPPER, CHARLOG, PLACES, QDONE
     try:
         import places
         PLACES = places.Places()
@@ -3247,6 +3346,12 @@ def main():
     MOBS.start()
     from logarchive import LogArchiver
     LogArchiver(LOG_DIR).start()                       # permanent compressed copies of every log
+    try:
+        import questsdone
+        QDONE = questsdone.Done()                          # the chat logs are read whole once, off the main path
+        threading.Thread(target=QDONE.backfill, args=(questsdone.chat_logs(LOG_DIR),), daemon=True).start()
+    except Exception as e:
+        print("quests done not started:", repr(e), file=sys.stderr)
     Tailer(COMP).start()
     try:
         from charlog import CharLog

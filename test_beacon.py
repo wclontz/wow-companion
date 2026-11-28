@@ -283,6 +283,31 @@ if [(e["name"], e["left"], e.get("stacks")) for e in tm] != [("Demon Skin", 600,
 if beacon.timed(d, "cooldowns", now=1000000) != [{"name": "Shadowburn", "left": 12}] or beacon.timed({}, "buffs") != []:
     ok = False
     print("FAIL cooldowns")
+# cooldowns from the 2026-11-25 add-on: which button, the pet, worn and carried things, and the bar's own line
+d2 = {"texts": {"cooldowns": "#bar\t0\t111100111111\t-\nShadowburn\t1000012\tb3\nDevour Magic\t1000008\tp5\n"
+                             "Healing Potion\t1000100\ti\nOdd\t1000050\tzz9\nTrinket\t1000300\te13"}}
+tm = beacon.timed(d2, "cooldowns", now=1000000)
+if [(e["name"], e["left"], e.get("at"), e.get("stacks")) for e in tm] != [
+        ("Shadowburn", 12, "b3", None), ("Devour Magic", 8, "p5", None), ("Healing Potion", 100, "i", None),
+        ("Odd", 50, None, None), ("Trinket", 300, "e13", None)]:
+    ok = False
+    print("FAIL cooldowns with places", tm)
+if beacon.bar(d2) != {"has": [True] * 4 + [False] * 2 + [True] * 6, "whole": True, "set": "111100111111/"} \
+        or beacon.bar(d) is not None \
+        or beacon.bar({"texts": {"cooldowns": "#bar\t0\t-\th\t12"}}) != {"has": None, "whole": False, "set": "-/12"}:
+    ok = False
+    print("FAIL bar", beacon.bar(d2))
+import companion
+scr = [{"slot": i, "key": str(i), "state": s} for i, s in enumerate(["ready", "cooldown", "ready", "ready", "cooldown", "ready"], 1)]
+more = {"cooldowns": tm, "bar": beacon.bar(d2)}
+got = companion.buttons_checked(scr, more)
+if [b["state"] for b in got] != ["ready", "unusable", "cooldown", "ready", "empty", "empty"] or got[2].get("left") != 12 \
+        or got[2].get("name") != "Shadowburn" or scr[1]["state"] != "cooldown" \
+        or companion.buttons_checked(scr, {"cooldowns": [], "bar": None}) is not scr \
+        or companion.buttons_checked(scr, {"cooldowns": [], "bar": {"has": None, "whole": False}})[1]["state"] != "cooldown" \
+        or companion.buttons_checked([{"slot": 1, "state": "empty"}], more)[0]["state"] != "ready":
+    ok = False
+    print("FAIL buttons checked", got)
 if beacon.supplies(d) != [{"name": "Soul Shard", "n": 3, "kind": "shard"}, {"name": "Ice Cold Milk", "n": 12, "kind": "food"}]:
     ok = False
     print("FAIL supplies", beacon.supplies(d))

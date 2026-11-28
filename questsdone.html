@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quests done</title>
+<style>
+:root{
+  --bg:#0d0b09; --panel:#17130f; --panel2:#1f1a14; --line:#3a2f22;
+  --gold:#e8c26a; --gold2:#b8913f; --text:#e9e1d3; --dim:#9a8f7e; --xp:#a24fe0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.35 "Segoe UI",system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;padding:10px 16px;border-bottom:1px solid var(--line);background:linear-gradient(#1c160f,#110e0a)}
+header h1{margin:0;font-size:22px;color:var(--gold);font-family:Georgia,serif;letter-spacing:.5px}
+header a{color:var(--gold2);text-decoration:none;font-size:14px}
+header .sp{margin-left:auto}
+header input{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 10px;font:inherit;font-size:14px;width:min(240px,60vw)}
+main{display:grid;gap:12px;padding:12px 16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.top{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:baseline}
+.top h2{margin:0;font:600 24px Georgia,serif;color:var(--gold)}
+.top .n{font-size:18px;color:var(--xp);font-weight:700}
+.dim{color:var(--dim)} .small{font-size:13px}
+.day{margin-top:12px}
+.day h3{margin:0 0 4px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--gold2);font-weight:600}
+.qs{display:flex;flex-wrap:wrap;gap:5px 6px}
+.q{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:2px 8px;font-size:13px;overflow-wrap:anywhere}
+.q .x{color:var(--dim)}
+.game{margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}
+.game .q{border-style:dashed}
+.empty{padding:30px 16px;color:var(--dim)}
+mark{background:#5a4514;color:inherit;border-radius:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Quests done</h1>
+  <span class="dim small" id="sub">from the chat log's "completed" lines</span>
+  <input class="sp" id="find" type="search" placeholder="find a quest" aria-label="find a quest">
+  <a href="/characters">characters →</a> <a href="/hud">HUD →</a> <a href="/">all the numbers →</a>
+</header>
+<main id="main"><div class="empty">Loading…</div></main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+let D = null, want = "";
+function dayName(d){ return new Date(d + "T12:00:00").toLocaleDateString(undefined, {weekday: "short", month: "short", day: "numeric"}); }
+function clock(t){ return new Date(t * 1000).toLocaleTimeString(undefined, {hour: "numeric", minute: "2-digit"}); }
+function when(t){ return new Date(t * 1000).toLocaleString(undefined, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}); }
+function shown(name){                    // the name with the searched part marked, or null when it does not match
+  if (!want) return esc(name);
+  const i = name.toLowerCase().indexOf(want);
+  return i < 0 ? null : esc(name.slice(0, i)) + "<mark>" + esc(name.slice(i, i + want.length)) + "</mark>" + esc(name.slice(i + want.length));
+}
+// quests of one day: steps of a chain that share a name are folded into one chip with a count
+function chips(quests){
+  const out = [], at = {};
+  for (const q of quests) {
+    const h = shown(q.quest); if (h == null) continue;
+    if (q.quest in at) { out[at[q.quest]].n++; continue; }
+    at[q.quest] = out.length; out.push({h, n: 1, t: q.t});
+  }
+  return out.map(c => `<span class="q" title="${clock(c.t)}">${c.h}${c.n > 1 ? ` <span class="x">×${c.n}</span>` : ""}</span>`).join("");
+}
+function render(){
+  const main = $("main");
+  if (!D || !D.chars.length) {
+    main.innerHTML = `<div class="card empty">${D && D.error ? "The companion has not started this yet." :
+      'No finished quest seen yet. The game writes "<quest> completed." into the chat log (the add-on switches it on at login, or type /chatlog), and it shows here a minute or two later.'}</div>`;
+    return;
+  }
+  let any = false;
+  const html = D.chars.map(c => {
+    const days = c.days.map(d => { const h = chips(d.quests); return h ? `<div class="day"><h3>${dayName(d.day)}</h3><div class="qs">${h}</div></div>` : ""; }).join("");
+    const g = c.game, only = g ? g.only.map(shown).filter(h => h != null) : [];
+    if (want && !days && !only.length) return "";
+    any = true;
+    const gameBox = !g ? "" : `<div class="game">
+      <div class="small dim">The game's own list (saved by the add-on ${when(g.t)}, when you last logged out or reloaded): <b style="color:var(--text)">${g.n}</b> quests done${g.unnamed ? `, ${g.unnamed} of them not named yet` : ""}.
+        ${only.length ? "Not in the chat log (done while it was off):" : (want ? "" : "Every one it names is in the list above.")}</div>
+      ${only.length ? `<div class="qs" style="margin-top:6px">${only.map(h => `<span class="q">${h}</span>`).join("")}</div>` : ""}</div>`;
+    return `<section class="card">
+      <div class="top"><h2>${c.name ? esc(c.name) : "Character not recorded"}</h2>
+        ${c.n ? `<span class="n">${c.n} done</span>` : ""}
+        <span class="dim small">${c.n ? `${c.names} different names · ${when(c.first)} to ${when(c.last)}` : "nothing in the chat log"}${c.name ? "" : " · finished before the companion kept track of who was played"}</span></div>
+      ${days}${gameBox}</section>`;
+  }).join("");
+  main.innerHTML = any ? html : `<div class="card empty">No finished quest has "${esc(want)}" in its name.</div>`;
+  $("sub").textContent = `${D.total} in all, from the chat log's "completed" lines`;
+}
+$("find").addEventListener("input", e => { want = e.target.value.trim().toLowerCase(); render(); });
+async function tick(){
+  try { D = await (await fetch("/api/quests_done", {cache: "no-store"})).json(); render(); }
+  catch (e) { if (!D) $("main").innerHTML = `<div class="card empty">The companion is not answering.</div>`; }
+}
+tick(); setInterval(tick, 60000);
+</script>
+</body>
+</html>

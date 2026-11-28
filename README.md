@@ -59,6 +59,7 @@ gear and kills over days and weeks (a line is saved to `character_log.jsonl` eve
 - **Group**: who is in the party, their gear level once they have been in range out of combat, and who is
   doing what.
 - **Characters**: level, money, gear and kills of each of your characters over days and weeks.
+- **Quests done** (`/done`): every quest you have finished, by character and day, from the chat log; with a box to find one by name.
 
 ## One monitor? Use a tablet or phone
 

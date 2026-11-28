@@ -336,10 +336,14 @@ def lines(d, name):
 
 
 def timed(d, name, now=None):
-    """buffs / debuffs / cooldowns -> [{"name", "left" seconds or None (does not run out), "stacks"}]"""
+    """buffs / debuffs / cooldowns -> [{"name", "left" seconds or None (does not run out), "stacks"}]
+    A cooldown also has "at" when the add-on says where it is: b3 = button 3 of the main bar, a61 = another
+    bar's slot, p4 = the pet's bar, e13 = worn, i = carried."""
     now = time.time() if now is None else now
     out = []
     for f in lines(d, name):
+        if f[0].startswith("#"):
+            continue                                         # (a line about the list itself: see bar())
         try:
             end = int(f[1]) if len(f) > 1 else 0
         except ValueError:
@@ -349,8 +353,22 @@ def timed(d, name, now=None):
         e = {"name": f[0], "left": max(0, round(end - now)) if end else None}
         if len(f) > 2 and f[2].isdigit() and int(f[2]) > 1:
             e["stacks"] = int(f[2])
+        elif len(f) > 2 and re.fullmatch(r"[abpe]\d{1,3}|i", f[2]):
+            e["at"] = f[2]
         out.append(e)
     return out
+
+
+def bar(d):
+    """What the add-on says about the main action bar, from the first line of its cooldown text:
+    {"has": [True / False x 12] or None (not known), "whole": False when the game kept part of the cooldowns
+    secret, "set": a text that changes when the bar shows other buttons (another page, a slot filled)}. None from an add-on that does not say (before 2026-11-25)."""
+    for f in lines(d, "cooldowns"):
+        if f[0] == "#bar" and len(f) >= 4:
+            has = [c == "1" for c in f[2]] if re.fullmatch(r"[01]{12}", f[2]) else None
+            return {"has": has, "whole": f[3] != "h",          # "set": changes when other buttons are showing
+                    "set": f[2] + "/" + (f[4] if len(f) > 4 else "")}
+    return None
 
 
 def supplies(d):

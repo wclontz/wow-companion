@@ -284,7 +284,19 @@ class ScreenReader(threading.Thread):
             return "neutral"
         return None
 
+    _bar_set, _relearn = None, False
+
+    def bar_is(self, key):
+        """The add-on's word on which buttons the bar is showing (None: it does not say). When that changes
+        (another page, a spell put on a slot) what each button looked like when ready is learned again:
+        against another page's icons a darker icon read as cooling down."""
+        if key is not None and key != self._bar_set:
+            self._relearn = self._bar_set is not None
+            self._bar_set = key
+
     def _buttons(self, img, sx, sy):
+        if self._relearn:
+            self._relearn, self.btn_ref, self.btn_rgb, self.icons_t = False, None, None, 0
         b = self.layout["buttons"]
         out = []
         crops = []
@@ -296,8 +308,12 @@ class ScreenReader(threading.Thread):
             crops.append(crop)
             inner = crop[int(crop.shape[0] * .25):int(crop.shape[0] * .75), int(w * .2):int(w * .8)]
             rgb = inner.reshape(-1, 3).mean(axis=0)
+            # an empty slot shows the bar's own dark, flat backing (measured 2026-11-25: about 41, 34, 25): it is
+            # not a spell cooling down, however bright that slot was when it held something
+            bare = bool(np.abs(rgb - np.array(b.get("empty_rgb", [41, 34, 25]))).max() < 9
+                        and inner.mean(axis=2).std() < 25)
             out.append({"slot": i + 1, "key": b["keys"][i] if i < len(b["keys"]) else "",
-                        "lum": float(rgb.mean()), "rgb": rgb})
+                        "lum": float(rgb.mean()), "rgb": rgb, "bare": bare})
         lums = np.array([o["lum"] for o in out])
         if self.btn_ref is None:
             self.btn_ref = lums.copy()
@@ -310,8 +326,9 @@ class ScreenReader(threading.Thread):
             if ratio > 0.95:                          # looks normal: learn its usual colour
                 self.btn_rgb[i] = self.btn_rgb[i] * 0.9 + o["rgb"] * 0.1
             rel = o["rgb"] / np.maximum(self.btn_rgb[i], 8)   # colour shift vs. its own normal look
-            if ref < 25:
+            if ref < 25 or o["bare"]:
                 o["state"] = "empty"
+                self.btn_ref[i] = o["lum"]            # (what it held is gone: forget how bright that was)
             elif ratio < 0.62:
                 o["state"] = "cooldown"
             elif rel[0] > 1.1 and rel[1] < 0.75 and rel[2] < 0.75:
@@ -321,7 +338,7 @@ class ScreenReader(threading.Thread):
             else:
                 o["state"] = "ready"
             o["dim"] = float(round(1 - min(1.0, ratio), 3))
-            del o["lum"], o["rgb"]
+            del o["lum"], o["rgb"], o["bare"]
         # all buttons dark together = global cooldown, not real cooldowns
         if sum(o["state"] == "cooldown" for o in out) >= max(3, len(out) // 2):
             for o in out:

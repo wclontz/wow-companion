@@ -79,6 +79,8 @@ body{background:radial-gradient(ellipse at top,#1b150f 0%,var(--bg) 70%);color:v
 .ring svg{width:100%;height:100%;transform:rotate(-90deg)}
 .ring .in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .ring .lvl{font-size:2vh;color:var(--dim);letter-spacing:.3vh;text-transform:uppercase}
+.ring .lvl .carry{font-size:3vh;line-height:1.3;letter-spacing:0;white-space:nowrap;font-weight:700;color:var(--fg, #ddd)}
+.ring .lvl .shards{color:#c9a0ff;margin-right:.6vh}
 .ring .pct{font-size:6vh;font-weight:700;color:var(--xp);line-height:1}
 .xpinfo{display:flex;flex-direction:column;gap:1.2vh;min-width:0}
 .kpis{display:flex;gap:2.4vh;flex-wrap:wrap}
@@ -123,6 +125,8 @@ canvas{width:100%;flex:1;min-height:0;height:0;display:block}
 .abtn.ready{border-color:#7a6a3a}
 .abtn .k{position:absolute;right:.3vh;top:.1vh;font-size:1.1vh;font-weight:700;text-shadow:0 0 2px #000,0 0 2px #000}
 .abtn.cooldown .k::after{content:" CD";color:#ff9a7a}
+.abtn.unusable .ov{background:rgba(0,0,0,.5)}
+.abtn .cdn{position:absolute;left:0;right:0;bottom:.2vh;text-align:center;font-size:1.5vh;font-weight:700;color:#ffd9a0;text-shadow:0 0 3px #000,0 0 3px #000}
 .donut{display:flex;gap:2vh;align-items:center;flex:1;min-height:0}
 .donut svg{height:100%;max-height:20vh;max-width:50%;aspect-ratio:1;flex:none}
 .legend div{display:flex;align-items:center;gap:.8vh;font-size:1.6vh;margin:.4vh 0}
@@ -174,6 +178,8 @@ canvas{width:100%;flex:1;min-height:0;height:0;display:block}
 .bpill.expiring{border:1px solid #8a7030;color:#ffd84a}
 .alert:not([hidden]) + .fresh{margin-left:0}
 @keyframes pulse{50%{opacity:.6}}
+@keyframes flash{50%{opacity:.15}}
+.ring .lvl .shards.low,.ring .lvl .bagfree.low{animation:flash .8s steps(1) infinite}
 .setup{position:absolute;left:1vh;right:1vh;bottom:1vh;background:#1d160f;border:1px solid var(--gold2);border-radius:.8vh;
   padding:1vh 1.2vh;display:flex;flex-wrap:wrap;gap:1vh;align-items:center;font-size:1.5vh;z-index:6;box-shadow:0 0 2vh #000}
 .setup[hidden]{display:none}
@@ -199,6 +205,7 @@ canvas{width:100%;flex:1;min-height:0;height:0;display:block}
   <a href="/dungeon">dungeon →</a> <a href="/map">map →</a>
   <a href="/instance">instance →</a>
   <a href="/characters">characters →</a>
+  <a href="/done">quests done →</a>
   <a href="/">all the numbers →</a>
 </div>
 
@@ -408,14 +415,27 @@ function renderXp(s){
   if (!x && s.me && !setupDismissed) $("setup").hidden = false;   // first run: need the level once
   else if (x && !setupByUser) $("setup").hidden = true;
   if (!x) {
-    $("lvl").textContent = "level ?"; $("pct").textContent = "—"; $("xpnum").textContent = "";
+    $("lvl").textContent = "level ?"; $("lvl")._was = null; $("pct").textContent = "—"; $("xpnum").textContent = "";
     $("toLvl").textContent = "—"; $("toLvlTxt").textContent = "set your level and XP to start";
     $("xpmode").textContent = "";
     return;
   }
   const frac = x.need ? x.xp / x.need : 0;
   $("ringArc").style.strokeDashoffset = 276.46 * (1 - frac);
-  $("lvl").textContent = `level ${x.level}`;
+  // a warlock's soul shards beside the level. Nothing says the class: a character seen carrying one is
+  // remembered (in this browser), so that none left shows as 0 and not as nothing.
+  const sup = s.strip && s.strip.more && s.strip.more.supplies, lock = "shards:" + (s.me || "");
+  const sh = sup && sup.find(i => i.kind === "shard");
+  let warlock = false;
+  try { if (sh) localStorage.setItem(lock, "1"); warlock = !!localStorage.getItem(lock); } catch (e) { warlock = !!sh; }
+  const nSh = sh ? sh.n : 0;
+  const st = s.strip || {}, free = st.bag_all ? st.bag_free : null;      // ...and the empty bag slots
+  const carry = [sup && warlock
+      ? `<span class="shards${nSh < 3 ? " low" : ""}" title="soul shards in your bags"${nSh <= 1 ? ' style="color:#ffb84a"' : ""}>🟣 ${nSh}</span>` : "",
+    free != null ? `<span class="bagfree${free < 3 ? " low" : ""}" title="empty bag slots (of ${st.bag_all})"` +
+      `${free <= 2 ? ' style="color:#ff6b5a"' : free <= 5 ? ' style="color:#ffb84a"' : ""}>🎒 ${free}/${st.bag_all}</span>` : ""].filter(Boolean);
+  const lvl = `level ${x.level}` + (carry.length ? `<div class="carry">${carry.join(" ")}</div>` : "");
+  if ($("lvl")._was !== lvl) { $("lvl")._was = lvl; $("lvl").innerHTML = lvl; }      // (written again, the flash would start over)
   $("pct").textContent = Math.floor(frac * 100) + "%";
   $("xpnum").innerHTML = `${fmt(x.xp)} / ${fmt(x.need)}` + (x.rested ? `<br><span style="color:#5a8dff" title="rested bonus left: kills give double XP until it's used up">+${fmt(x.rested)} rested</span>` : "");
   const row = s.last_kill_row;
@@ -475,8 +495,17 @@ function renderPurse(s){
     parts.push(`<span title="free bag slots"${c ? ` style="color:${c}"` : ""}>🎒 ${p.bag_free} / ${p.bag_all} free${p.bag_free <= 2 ? " ⚠" : ""}</span>`);
   }
   if (p.wear != null) {
-    const c = p.wear <= 20 ? "#ff6b5a" : p.wear <= 40 ? "#ffb84a" : "";
-    parts.push(`<span title="your most worn piece of gear: how much is left"${c ? ` style="color:${c}"` : ""}>🔨 ${Math.round(p.wear)}%${p.wear <= 20 ? " repair ⚠" : ""}</span>`);
+    // all the gear together and the repair's price (a newer add-on), the most worn piece beside it; without
+    // them the piece alone
+    const all = p.more && p.more.wear_all, fix = p.more && p.more.repair, worst = Math.round(p.wear);
+    const low = p.wear <= 20 || (all != null && all < 20);
+    const c = low ? "#ff6b5a" : (p.wear <= 40 || (all != null && all <= 40)) ? "#ffb84a" : "";
+    parts.push(all != null
+      ? `<span title="your gear: how much is left, all pieces together (the most worn piece: ${worst}%)` +
+        `${fix ? "; the repair's price is before a merchant's discount" : ""}"${c ? ` style="color:${c}"` : ""}>🔨 ${all}%` +
+        `${worst < all ? ` <span class="dim">worst ${worst}%</span>` : ""}` +
+        `${fix ? ` <b class="gold">${coins(fix)}</b>` : ""}${low ? " repair ⚠" : ""}</span>`
+      : `<span title="your most worn piece of gear: how much is left"${c ? ` style="color:${c}"` : ""}>🔨 ${worst}%${low ? " repair ⚠" : ""}</span>`);
   }
   // what you carry (add-on version 8): soul shards, food and drink, potions; and spells cooling down
   const more = p.more || {};
@@ -484,14 +513,14 @@ function renderPurse(s){
     const sum = k => more.supplies.filter(x => x.kind === k).reduce((n, x) => n + x.n, 0);
     const tip = k => more.supplies.filter(x => x.kind === k).map(x => `${x.n} ${x.name}`).join(", ");
     const sh = more.supplies.find(x => x.kind === "shard");
-    if (sh) parts.push(`<span title="soul shards"${sh.n <= 1 ? ` style="color:#ffb84a"` : ""}>🟣 ${sh.n}</span>`);
     if (sum("food")) parts.push(`<span title="${esc(tip("food"))}"${sum("food") <= 4 ? ` style="color:#ffb84a"` : ""}>🍞 ${sum("food")}</span>`);
     if (sum("potion")) parts.push(`<span title="${esc(tip("potion"))}">🧪 ${sum("potion")}</span>`);
     if (sum("ammo")) parts.push(`<span title="${esc(tip("ammo"))}"${sum("ammo") <= 200 ? ` style="color:#ffb84a"` : ""}>🏹 ${sum("ammo")}</span>`);
   }
   if (more.cooldowns && more.cooldowns.length)
-    parts.push(`<span title="spells on your bars that are cooling down">⏱ ` + more.cooldowns.slice(0, 4).map(c =>
-      `${esc(c.name)} ${c.left >= 60 ? Math.ceil(c.left / 60) + "m" : c.left + "s"}`).join(", ") + `</span>`);
+    parts.push(`<span title="${esc(more.cooldowns.map(c => c.name + " " + cdLeft(c.left)).join(", "))}">⏱ ` +
+      [...more.cooldowns].sort((a, b) => a.left - b.left).slice(0, 4).map(c => `${esc(c.name)} ${cdLeft(c.left)}`).join(", ") +
+      (more.cooldowns.length > 4 ? ` +${more.cooldowns.length - 4}` : "") + `</span>`);
   el.innerHTML = parts.join(` <span class="dim">·</span> `);
 }
 
@@ -572,13 +601,14 @@ function renderUnder(s){
   $("liveTag").hidden = !p.live;
 }
 
+function cdLeft(n){ return n >= 3600 ? Math.ceil(n / 3600) + "h" : n >= 60 ? Math.ceil(n / 60) + "m" : n + "s"; }
 function renderABar(s){
   const sc = s.screen, el = $("abar");
   if (!sc || !sc.ok || !sc.buttons) { el.innerHTML = sc && sc.reason ? `<span class="dim small">${esc(sc.reason)}</span>` : ""; return; }
   el.innerHTML = sc.buttons.filter(b => b.state !== "empty").map(b => `
-    <div class="abtn ${b.state}" title="${b.key}: ${b.state}">
+    <div class="abtn ${b.state}" title="${esc(b.key)}: ${b.name ? esc(b.name) + " " : ""}${b.state === "unusable" ? "can't be used right now" : b.state}${b.left != null ? ", " + cdLeft(b.left) + " left" : ""}">
       ${sc.icons && sc.icons[b.slot - 1] ? `<img src="${sc.icons[b.slot - 1]}" alt="">` : ""}
-      <div class="ov"></div><span class="k">${esc(b.key)}</span></div>`).join("");
+      <div class="ov"></div><span class="k">${esc(b.key)}</span>${b.left != null ? `<span class="cdn">${cdLeft(b.left)}</span>` : ""}</div>`).join("");
 }
 
 function applyReadyTint(state){
